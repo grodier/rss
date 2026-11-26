@@ -150,6 +150,50 @@ func (r *AdminUserRepository) LogOutEverywhere(ctx context.Context, id string, b
 	return devices, tx.Commit()
 }
 
+// SetFeature grants user id feature when on, as granted by an admin, or
+// revokes it, recorded as user.feature_grant or user.feature_revoke by by
+// when that changed anything: granting a feature they have, or revoking
+// one they don't, records nothing. rss.ErrNoRecord if there's no such user.
+func (r *AdminUserRepository) SetFeature(ctx context.Context, id, feature string, on bool, by rss.AuditActor) error {
+	tx, err := r.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := lockUser(ctx, tx, id); err != nil {
+		return err
+	}
+	// Each returns the row's source when it changed a row, and no row when
+	// it didn't.
+	stmt, action := `DELETE FROM user_features WHERE user_id = $1 AND feature = $2 RETURNING source`, "user.feature_revoke"
+	if on {
+		stmt = `INSERT INTO user_features (user_id, feature, source) VALUES ($1, $2, 'admin') ON CONFLICT DO NOTHING RETURNING source`
+		action = "user.feature_grant"
+	}
+	var source string
+	err = tx.QueryRowContext(ctx, stmt, id, feature).Scan(&source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// The row as it was, or as it now is: a grant's entry has only After, a
+	// revoke's only Before.
+	row := map[string]any{"feature": feature, "source": source}
+	e := rss.AuditEntry{AuditActor: by, Action: action, TargetType: "user", TargetID: id}
+	if on {
+		e.After = row
+	} else {
+		e.Before = row
+	}
+	if err := recordAudit(ctx, tx, e); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // Delete deletes user id's account as the reader's own delete does
 // (deleteUser), without their password, recorded as user.delete by by. It
 // returns the user as they were, for the email saying so. rss.ErrNoRecord if

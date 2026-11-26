@@ -80,7 +80,7 @@ func (r *AdminUserRepository) ListUsers(ctx context.Context, q rss.AdminUserQuer
 }
 
 // User returns reader id's page, or rss.ErrNoRecord: their account, the
-// invite they signed up with, their counts, their email links that haven't
+// invite they signed up with, their features, their counts, their email links that haven't
 // expired, and the newest adminUserEmails emails to their address or a
 // link's (a change of address's new one) since they signed up.
 func (r *AdminUserRepository) User(ctx context.Context, id string) (rss.AdminUser, error) {
@@ -100,6 +100,10 @@ func (r *AdminUserRepository) User(ctx context.Context, id string) (rss.AdminUse
 		return rss.AdminUser{}, err
 	}
 
+	stmt = `SELECT EXISTS (SELECT 1 FROM user_features WHERE user_id = $1 AND feature = $2)`
+	if err := r.DB.QueryRowContext(ctx, stmt, id, rss.FeatureNewsletters).Scan(&out.Newsletters); err != nil {
+		return rss.AdminUser{}, err
+	}
 	if out.Counts, err = r.counts(ctx, id); err != nil {
 		return rss.AdminUser{}, err
 	}

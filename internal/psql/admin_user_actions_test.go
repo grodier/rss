@@ -326,6 +326,129 @@ func TestAdminUserRepositoryLogOutEverywhere(t *testing.T) {
 }
 
 // Requires a migrated database; see psqltest.NewDB.
+func TestAdminUserRepositorySetFeature(t *testing.T) {
+	t.Parallel()
+	db := psqltest.NewDB(t)
+	repo := NewAdminUserRepository(db)
+
+	features := func(t *testing.T, id string) int {
+		t.Helper()
+		return countRows(t, db, `SELECT count(*) FROM user_features WHERE user_id = $1`, id)
+	}
+	has := func(t *testing.T, id string) bool {
+		t.Helper()
+		u, err := repo.User(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return u.Newsletters
+	}
+
+	t.Run("grants once", func(t *testing.T) {
+		id, _ := actionTestUser(t, db, nil)
+		other, _ := actionTestUser(t, db, nil)
+		by := testActor(t, db)
+		if has(t, id) {
+			t.Fatal("a new user has newsletters")
+		}
+
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, true, by); err != nil {
+			t.Fatalf("SetFeature: %v", err)
+		}
+		var source string
+		if err := db.QueryRow(`SELECT source FROM user_features WHERE user_id = $1 AND feature = $2`, id, rss.FeatureNewsletters).Scan(&source); err != nil || source != "admin" {
+			t.Errorf("the row's source = %q, %v; want admin", source, err)
+		}
+		if !has(t, id) {
+			t.Error("User doesn't show newsletters on")
+		}
+		if features(t, other) != 0 {
+			t.Error("the other user got the feature")
+		}
+		e := onlyEntry(t, db, by, "user.feature_grant", id)
+		if e.Before != nil || e.After["feature"] != rss.FeatureNewsletters || e.After["source"] != "admin" {
+			t.Errorf("audit before %v, after %v", e.Before, e.After)
+		}
+
+		// Again: nothing changes, and nothing's recorded.
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, true, by); err != nil {
+			t.Fatalf("SetFeature again: %v", err)
+		}
+		if n := features(t, id); n != 1 {
+			t.Errorf("rows = %d, want 1", n)
+		}
+		onlyEntry(t, db, by, "user.feature_grant", id)
+	})
+
+	t.Run("revokes once", func(t *testing.T) {
+		id, _ := actionTestUser(t, db, nil)
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, true, testActor(t, db)); err != nil {
+			t.Fatal(err)
+		}
+		by := testActor(t, db)
+
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, false, by); err != nil {
+			t.Fatalf("SetFeature: %v", err)
+		}
+		if n := features(t, id); n != 0 {
+			t.Errorf("rows = %d, want 0", n)
+		}
+		if has(t, id) {
+			t.Error("User shows newsletters on")
+		}
+		e := onlyEntry(t, db, by, "user.feature_revoke", id)
+		if e.After != nil || e.Before["feature"] != rss.FeatureNewsletters || e.Before["source"] != "admin" {
+			t.Errorf("audit before %v, after %v", e.Before, e.After)
+		}
+
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, false, by); err != nil {
+			t.Fatalf("SetFeature again: %v", err)
+		}
+		onlyEntry(t, db, by, "user.feature_revoke", id)
+	})
+
+	t.Run("revoking what they don't have records nothing", func(t *testing.T) {
+		id, _ := actionTestUser(t, db, nil)
+		by := testActor(t, db)
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, false, by); err != nil {
+			t.Fatalf("SetFeature: %v", err)
+		}
+		if got := auditBy(t, db, by); len(got) != 0 {
+			t.Errorf("audit entries = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("deleting the user deletes their rows", func(t *testing.T) {
+		id, _ := actionTestUser(t, db, nil)
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, true, testActor(t, db)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.Delete(t.Context(), id, testActor(t, db)); err != nil {
+			t.Fatal(err)
+		}
+		if n := features(t, id); n != 0 {
+			t.Errorf("rows = %d, want 0", n)
+		}
+	})
+
+	t.Run("unknown user", func(t *testing.T) {
+		if err := repo.SetFeature(t.Context(), "00000000-0000-4000-8000-000000000000", rss.FeatureNewsletters, true, testActor(t, db)); !errors.Is(err, rss.ErrNoRecord) {
+			t.Errorf("SetFeature = %v, want %v", err, rss.ErrNoRecord)
+		}
+	})
+
+	t.Run("not recorded, not granted", func(t *testing.T) {
+		id, _ := actionTestUser(t, db, nil)
+		if err := repo.SetFeature(t.Context(), id, rss.FeatureNewsletters, true, brokenActor(t, db)); err == nil {
+			t.Fatal("SetFeature with a broken actor worked")
+		}
+		if n := features(t, id); n != 0 {
+			t.Error("granted without its record")
+		}
+	})
+}
+
+// Requires a migrated database; see psqltest.NewDB.
 func TestAdminUserRepositoryDelete(t *testing.T) {
 	t.Parallel()
 	db := psqltest.NewDB(t)

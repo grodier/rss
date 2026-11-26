@@ -36,6 +36,7 @@
           <div><dt>Email confirmed</dt><dd>{{if .EmailConfirmedAt.IsZero}}<span class="status status-pending">Not confirmed</span>{{else}}{{ago $now .EmailConfirmedAt}} <small class="quiet">{{stamp .EmailConfirmedAt}} UTC</small>{{end}}</dd></div>
           <div><dt>Joined</dt><dd>{{ago $now .CreatedAt}} <small class="quiet">{{stamp .CreatedAt}} UTC</small></dd></div>
           <div><dt>Last seen</dt><dd>{{if .LastSeenAt.IsZero}}Never{{else}}{{ago $now .LastSeenAt}} <small class="quiet">{{stamp .LastSeenAt}} UTC</small>{{end}}</dd></div>
+          <div><dt>Newsletters</dt><dd>{{if .Newsletters}}On{{else}}Off{{end}}</dd></div>
           <div><dt>Invite</dt><dd class="wrap">
             {{- with .Invite}}{{if .ID}}{{if .Wave}}Wave “{{.Wave}}”{{else if .Note}}Open invite: {{.Note}}{{else if .Email}}Sent to {{.Email}}{{else}}Open invite{{end}}, {{date .CreatedAt}}{{else}}None{{end}}{{end -}}
           </dd></div>
@@ -135,6 +136,15 @@
           <li>
             <form action="/users/{{.ID}}/log-out-everywhere" method="post"><button class="btn btn-sm" type="submit" aria-describedby="logout-hint">Log out everywhere</button></form>
             <p id="logout-hint">{{with .Counts.Devices}}Ends their sessions on the {{if eq . 1}}device{{else}}{{.}} devices{{end}} they’re logged in on.{{else}}They aren’t logged in anywhere now.{{end}} They log in again with their password.</p>
+          </li>
+          <li>
+            {{if .Newsletters}}
+            <form action="/users/{{.ID}}/newsletters" method="post"><input type="hidden" name="on" value="false" /><button class="btn btn-sm" type="submit" aria-describedby="newsletters-hint">Turn off newsletters</button></form>
+            <p id="newsletters-hint">Mail to their address is refused, and senders will drop it. Their newsletters stay readable.</p>
+            {{else}}
+            <form action="/users/{{.ID}}/newsletters" method="post"><input type="hidden" name="on" value="true" /><button class="btn btn-sm" type="submit" aria-describedby="newsletters-hint">Turn on newsletters</button></form>
+            <p id="newsletters-hint">Gives them an address that turns newsletters into feeds.</p>
+            {{end}}
           </li>
           <li>
             <a class="btn btn-sm btn-danger-quiet" href="/users/{{.ID}}/delete" aria-describedby="delete-hint">Delete account…</a>

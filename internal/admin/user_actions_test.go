@@ -224,12 +224,98 @@ func TestUserLogOutEverywhere(t *testing.T) {
 	}
 }
 
+func TestUserNewslettersSection(t *testing.T) {
+	off, on := confirmedUser(), confirmedUser()
+	on.Newsletters = true
+	tests := []struct {
+		name      string
+		user      rss.AdminUser
+		want, not []string
+	}{
+		{"off", off,
+			[]string{"<dt>Newsletters</dt><dd>Off</dd>", `<input type="hidden" name="on" value="true" />`, "Turn on newsletters</button>",
+				"Gives them an address that turns newsletters into feeds."},
+			[]string{"Turn off newsletters"}},
+		{"on", on,
+			[]string{"<dt>Newsletters</dt><dd>On</dd>", `<input type="hidden" name="on" value="false" />`, "Turn off newsletters</button>",
+				html.EscapeString("Mail to their address is refused, and senders will drop it. Their newsletters stay readable.")},
+			[]string{"Turn on newsletters"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, _ := actionsServer(t, &fakeUsers{user: tt.user}, &fakeEmails{})
+			body := b.get(t, "/users/"+tt.user.ID).Body.String()
+			if !strings.Contains(body, `<form action="/users/`+tt.user.ID+`/newsletters" method="post">`) {
+				t.Error("the page lacks the newsletters form")
+			}
+			for _, s := range tt.want {
+				if !strings.Contains(body, s) {
+					t.Errorf("the page lacks %s", s)
+				}
+			}
+			for _, s := range tt.not {
+				if strings.Contains(body, s) {
+					t.Errorf("the page offers %s", s)
+				}
+			}
+		})
+	}
+}
+
+func TestUserNewsletters(t *testing.T) {
+	user := confirmedUser()
+	path := "/users/" + user.ID + "/newsletters"
+	for _, tt := range []struct {
+		on    string
+		want  bool
+		flash string
+	}{
+		{"true", true, "Newsletters turned on."},
+		{"false", false, "Newsletters turned off. What they've received stays readable."},
+	} {
+		t.Run(tt.on, func(t *testing.T) {
+			users := &fakeUsers{user: user}
+			b, _ := actionsServer(t, users, &fakeEmails{})
+			rr := b.post(t, path, url.Values{"on": {tt.on}})
+			followFlash(t, b, rr, "/users/"+user.ID, tt.flash)
+			c := onlyCall(t, users, "SetFeature", user.ID)
+			if c.feature != rss.FeatureNewsletters || c.on != tt.want {
+				t.Errorf("SetFeature(%q, %v), want (%q, %v)", c.feature, c.on, rss.FeatureNewsletters, tt.want)
+			}
+		})
+	}
+
+	for _, on := range []string{"", "yes", "1"} {
+		users := &fakeUsers{user: user}
+		b, _ := actionsServer(t, users, &fakeEmails{})
+		if rr := b.post(t, path, url.Values{"on": {on}}); rr.Code != http.StatusBadRequest {
+			t.Errorf("POST %s with on=%q = %d, want 400", path, on, rr.Code)
+		}
+		if len(users.calls) != 0 {
+			t.Errorf("on=%q called %+v", on, users.calls)
+		}
+	}
+
+	for _, tt := range []struct {
+		err  error
+		code int
+	}{
+		{rss.ErrNoRecord, http.StatusNotFound},
+		{errors.New("boom"), http.StatusInternalServerError},
+	} {
+		b, _ := actionsServer(t, &fakeUsers{user: user, actionErr: tt.err}, &fakeEmails{})
+		if rr := b.post(t, path, url.Values{"on": {"true"}}); rr.Code != tt.code {
+			t.Errorf("POST %s with %v = %d, want %d", path, tt.err, rr.Code, tt.code)
+		}
+	}
+}
+
 func TestUserActionsMissingUser(t *testing.T) {
-	for _, path := range []string{"/resend-confirmation", "/mark-confirmed", "/send-password-reset", "/log-out-everywhere", "/delete"} {
+	for _, path := range []string{"/resend-confirmation", "/mark-confirmed", "/send-password-reset", "/log-out-everywhere", "/newsletters", "/delete"} {
 		for _, id := range []string{userID(9), "not-a-uuid"} {
 			users := &fakeUsers{user: confirmedUser()}
 			b, _ := actionsServer(t, users, &fakeEmails{})
-			if rr := b.post(t, "/users/"+id+path, url.Values{"email": {"reader9@example.com"}}); rr.Code != http.StatusNotFound {
+			if rr := b.post(t, "/users/"+id+path, url.Values{"email": {"reader9@example.com"}, "on": {"true"}}); rr.Code != http.StatusNotFound {
 				t.Errorf("POST /users/%s%s = %d, want 404", id, path, rr.Code)
 			}
 			if len(users.calls) != 0 {

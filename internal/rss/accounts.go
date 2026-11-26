@@ -39,6 +39,14 @@ const (
 	LayoutCards     = "cards"
 )
 
+// Features a reader can have beyond the base app (user_features.feature);
+// a user_features row means they have it.
+const (
+	// FeatureNewsletters gives a reader an address that turns newsletters
+	// into feeds.
+	FeatureNewsletters = "newsletters"
+)
+
 // SessionIdleTimeout ends a reader's login (a user_sessions row) that
 // hasn't been used for this long; the row is deleted at their next login.
 const SessionIdleTimeout = 90 * 24 * time.Hour

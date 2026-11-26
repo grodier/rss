@@ -382,15 +382,18 @@ type AdminUserRow struct {
 }
 
 // AdminUser is one reader's admin page: their account, the invite they
-// signed up with (ID "" for none), their counts, the emails to them that
-// the outbox still holds, and their outstanding email links.
+// signed up with (ID "" for none), the features they have, their counts,
+// the emails to them that the outbox still holds, and their outstanding
+// email links.
 // Counts only: never their reads, saves, stars, tags, timelines or feeds.
 type AdminUser struct {
 	AdminUserRow
 	Invite Invite
-	Counts AdminUserCounts
-	Emails []AdminUserEmail
-	Tokens []AdminUserToken
+	// Newsletters says whether they have FeatureNewsletters.
+	Newsletters bool
+	Counts      AdminUserCounts
+	Emails      []AdminUserEmail
+	Tokens      []AdminUserToken
 }
 
 // AdminUserCounts are a reader's counts on their admin page. Devices are

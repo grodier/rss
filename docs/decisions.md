@@ -570,6 +570,11 @@ Planned in #139 (issues #135–#138).
   The page renders every row and the server hides those that don't match a `?q=`, so the search works without JavaScript and the script toggles the same rows; a site keeps its header while any of its feeds match.
   The sort is in the URL, not a stored preference, until a reader asks for it to stick.
   Rejected: the sort as tabs under the page head (a full row of height above the list, and tabs elsewhere switch content rather than order it), and Discover's suggestions while typing (every match is a feed you follow and is already on the page, so a compact step shows the same feeds twice and hides their warnings; Discover needs it because its full results are heavy and its tabs would shift, #666).
+- **My feeds can show one kind of feed at a time** (#862, planned with "Newsletters are a kind of feed; the mailbox is a setting" under "Newsletters"): Websites, Newsletters, Videos and Social, shown only when a reader's feeds span two or more kinds, so most readers see no change.
+  Kinds are named by medium, not platform, so a new platform joins a kind rather than adding a choice; podcasts wait until feeds with audio are recognized.
+  Kind is a filter, never the list's structure: My feeds stays grouped by site, and tags stay the reader's own organization.
+  Other readers either mix every kind with no view of one (Inoreader and Feedly, whose readers make "Newsletters" folders by hand; Readwise Reader can't list the newsletters you follow at all) or group by type and nothing else (the new Reeder, whose lack of any other organizing is MacStories' main complaint).
+  The kind comes from the site key (`discovery.KindOf`, beside `Platform`), so it needs no column; the filter is in the URL (`?kind=`) like the sort, and its look is decided at #862's checkpoint.
 - **A choice between a page's views is a segmented control of links** (#742): the timeline form's segmented look, with the admin's markup for filters, a `<nav>` named by its visible label holding a list of links, the current one `aria-current="page"`.
   Links rather than buttons, since each view is its own URL and needs no script; a segmented control rather than a `<select>`, since two or three choices fit and all stay visible, and a select would need a button or a script that submits on change.
   The first version, two quiet text links after "Sort by", was 20 px tall, didn't look pressable on touch screens, and had no name tying the links to the sort.
@@ -629,19 +634,26 @@ Planned in #309 (issues #302, #303).
 
 Planned in #839 (issues #826–#829, #831–#838 and #840–#847), after researching how Feedbin, Inoreader, Feedly, Readwise Reader, Feeder, NewsBlur, Kill the Newsletter and Meco handle newsletters.
 The look and feel isn't decided here: each issue with a design checkpoint starts from the planning prototype, expects several rounds, and records what's approved.
+Where newsletters live was revised before building, with #862 (see "Newsletters are a kind of feed; the mailbox is a setting" below).
 
 - **One address per reader, and one feed per sender** (the owner's pick of three).
   A reader copies one address once; each newsletter becomes its own feed, which they can rename, tag, put in timelines and unfollow like any feed.
   Senders are told apart by `List-Id` when its domain matches the authenticated sending domain, else by the From address (#829), so one publisher's several newsletters stay apart and a sender can't put its mail in another newsletter's feed.
   Rejected: an address per newsletter, made before signing up (Inoreader, Feedly), which contains a leak to one newsletter but adds a step every time; and one address plus optional extras (Feedbin), more to build and explain.
   Extra addresses and plus-addressing are in the backlog.
+- **Newsletters are a kind of feed; the mailbox is a setting** (the owner's pick of four placements, revising #839's Newsletters page; #827, #832, #833, #834, #847, #862).
+  The newsletters a reader follows are listed in My feeds under its Newsletters kind (#862, #832), which starts with their address and Copy, since that's where they're looking at newsletters.
+  The address, Get a new address, the forwarding guide, waiting confirmations, other mail and blocked senders are on Settings › Newsletters (`/settings/newsletters`), whose row in Settings shows the address.
+  Reading goes where feeds are, and jobs done once or rarely go where settings are, as Feedbin (Settings › Newsletters, with its past senders), Omnivore (received emails and how each was sorted, in settings) and Matter (the address under the profile) do.
+  Rejected: a Newsletters page reached from a button in My feeds' head, as #839 planned (a second bulky head button beside Tags, a page with no clear way back while the nav still says My feeds, and mailbox chores among the reader's feeds, with no list of the newsletters themselves); everything in My feeds' Newsletters view (the filter becomes a page in disguise, and held mail there reads as an inbox); and the address on a card in Discover, where Inoreader and Feedly put it in their Add flows (three places for one feature, and a private address on the public catalog's page).
+  How a waiting confirmation reaches the reader (the notice, what it opens, where waiting mail is listed) stays open for #833's and #847's checkpoints.
 - **The address is readable plus random**, like `george.k7x2m9@in.paperround.app` (#827): recognizable in a sign-up form, and unguessable.
   Rejected: fully random (hard to recognize), and chosen by the reader (guessable, so spammed; Readwise warns about this).
   "Get a new address" keeps the old one receiving for 30 days, so a leaked address can be replaced without losing newsletters.
 - **Newsletters from new senders are followed automatically; everything else waits** (#829, #833).
   The reader signed up on purpose, so a newsletter's first issue goes straight to the timeline.
   Only mail with `List-Unsubscribe` or `List-Id` counts as a newsletter: bulk senders must send them (Gmail's and Yahoo's 2024 rules), and spam, receipts and personal mail usually don't.
-  Confirmations and Gmail's forwarding code wait on the Newsletters page, and other mail waits there for 30 days, never reaching the timeline, with Follow sender and Block.
+  Confirmations and Gmail's forwarding code wait in Settings › Newsletters, and other mail waits there for 30 days, never reaching the timeline, with Follow sender and Block.
   Rejected: holding every new sender until the reader follows it (a waiting list that feels like an inbox), and refusing other mail (a misjudged newsletter would be lost without a trace).
 - **Confirmations are never clicked for the reader** (#833): anyone who knew the address could then sign them up to anything.
   Readwise clicks Gmail's forwarding confirmation; here its code is shown to copy instead.
@@ -674,7 +686,7 @@ The look and feel isn't decided here: each issue with a design checkpoint starts
   Share appears only on a newsletter article that is a copy of a public feed's article, with that article's link (#832, #837).
 - **Access is a per-reader feature in a table, granted in the admin** (#826), not a flag like `-debug-emails`.
   The owner wants test accounts first and possibly a paid plan later: billing will grant the same row, so who has access, and why, is one query.
-  Losing access refuses new mail and hides the Newsletters page; newsletter feeds and their articles stay readable in the timeline, My feeds and Saved.
+  Losing access refuses new mail and hides Settings › Newsletters and My feeds' Newsletters kind; newsletter feeds and their articles stay readable in the timeline, My feeds and Saved.
   The refusal is permanent to senders, who usually drop the address, so newsletters don't come back if access does (#828).
 - **Mail arrives through Cloudflare Email Routing and a small Worker that posts the raw message to a signed endpoint** (#828).
   The DNS is already in Cloudflare, and Email Routing is free; if sending moves to SES, receiving can stay or move, since the app takes "a signed raw message over HTTPS" from any adapter ("Portable by contract" under "Deployment").

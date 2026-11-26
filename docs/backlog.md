@@ -356,6 +356,9 @@ Each with when it pays off:
   FROM articles WHERE media_type <> '' GROUP BY 1;
   ```
   Use the embed and media numbers to order the next three items.
+- [ ] **Podcasts as a kind in My feeds** (from #862).
+  #862's kinds come from the site key, which can't tell a podcast; a feed whose recent items mostly have audio enclosures (#297 keeps their type) could be marked at ingest, making Podcasts a choice on My feeds.
+  With the player below, or once readers follow podcasts.
 - [ ] **Podcast and video player.**
   Keep the enclosure's URL, type and length (#297 only keeps the type), show the browser's own `<audio>` / `<video>` player on the article page, and an "Audio" or "Video" label on the card.
   Media loads from the publisher, so the CSP needs `media-src https:`.
@@ -458,6 +461,9 @@ The decisions are under "Filtering and timelines" in decisions.md.
   If common words matter in practice, look at recent weeks first and widen only when a page isn't full.
   The same index could serve searching your articles (#647 plans it).
   Plan after #404, so it's measured against the new timeline query.
+- [ ] **A timeline condition by kind** (from #862).
+  "Only newsletters" or "only videos" as a timeline condition, using My feeds' kinds (#862), as Reeder's Video and Audio timelines do; the audio/video condition (#359) counts articles' enclosures, not the kind of feed.
+  When someone asks.
 - [ ] **Embedded videos for the audio/video condition.** #359 only counts enclosures.
   A flag set at ingest for YouTube or Vimeo iframes would add blog posts with videos; decide with "Measure embeds and media".
 
@@ -482,6 +488,7 @@ The decisions are under "Filtering and timelines" in decisions.md.
   Found in the design review that filed #419–#424 (#425), and not filed yet; each needs a design checkpoint ("Design" in decisions.md) unless it's copy only.
   - Two checkbox-list patterns: inline on Edit subscription, full-width rows on the timeline form and tag pages.
   - Sub-nav pages: Tags and a tag aren't in the nav (they're reached from a pill on My feeds), so their heads carry hand-made links up ("My feeds", "All tags"). Rethink how they're reached rather than add back links (see "No back links in page heads" in decisions.md). Timelines are reached from the tab row's Edit (#479), and Edit timeline's "All timelines" goes (#483).
+    The owner finds the Tags pill and its page wrong too (while revising newsletters' places, #862): a tag could become a choice on My feeds, as kinds are (#862), with creating, renaming and deleting tags moved elsewhere.
   - Feed URLs in small monospace on feed pages and Edit subscription, the only monospace outside debug panels.
   - Phones: the top bar's border and the tab head's divider stack into two hairlines, and the account avatar looks oversized next to the name.
 - [ ] **A Discover section's tabs share the timeline tabs' motion** (#634).

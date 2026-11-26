@@ -15,7 +15,7 @@ import (
 // newsletterSession is a reader with newsletters.
 var newsletterSession = rss.Session{
 	ID:   "123e4567-e89b-12d3-a456-426614174097",
-	User: rss.User{ID: "123e4567-e89b-12d3-a456-426614174003", Name: "Sam Reader", Email: "sam@example.com", Features: []string{rss.FeatureNewsletters}},
+	User: rss.User{ID: "123e4567-e89b-12d3-a456-426614174003", Name: "Sam Reader", Email: "sam@example.com", Features: rss.NewFeatures(rss.FeatureNewsletters)},
 }
 
 func newsletterServer(t *testing.T, store *fakeNewsletterStore) *Server {
@@ -93,7 +93,7 @@ func TestNewsletterLocalPart(t *testing.T) {
 
 func TestNewsletterRoutesNeedTheFeature(t *testing.T) {
 	without := newsletterSession
-	without.User.Features = nil
+	without.User.Features = 0
 	tests := []struct {
 		name   string
 		domain string
@@ -248,7 +248,7 @@ func TestSettingsNewsletterAddress(t *testing.T) {
 
 func TestSettingsNewslettersRow(t *testing.T) {
 	without := newsletterSession
-	without.User.Features = nil
+	without.User.Features = 0
 	tests := []struct {
 		name    string
 		domain  string

@@ -154,7 +154,7 @@ func (r *AdminUserRepository) LogOutEverywhere(ctx context.Context, id string, b
 // revokes it, recorded as user.feature_grant or user.feature_revoke by by
 // when that changed anything: granting a feature they have, or revoking
 // one they don't, records nothing. rss.ErrNoRecord if there's no such user.
-func (r *AdminUserRepository) SetFeature(ctx context.Context, id, feature string, on bool, by rss.AuditActor) error {
+func (r *AdminUserRepository) SetFeature(ctx context.Context, id string, feature rss.Feature, on bool, by rss.AuditActor) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -172,7 +172,7 @@ func (r *AdminUserRepository) SetFeature(ctx context.Context, id, feature string
 		action = "user.feature_grant"
 	}
 	var source string
-	err = tx.QueryRowContext(ctx, stmt, id, feature).Scan(&source)
+	err = tx.QueryRowContext(ctx, stmt, id, string(feature)).Scan(&source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -181,7 +181,7 @@ func (r *AdminUserRepository) SetFeature(ctx context.Context, id, feature string
 	}
 	// The row as it was, or as it now is: a grant's entry has only After, a
 	// revoke's only Before.
-	row := map[string]any{"feature": feature, "source": source}
+	row := map[string]any{"feature": string(feature), "source": source}
 	e := rss.AuditEntry{AuditActor: by, Action: action, TargetType: "user", TargetID: id}
 	if on {
 		e.After = row

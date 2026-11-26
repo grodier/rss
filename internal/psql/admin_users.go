@@ -101,7 +101,7 @@ func (r *AdminUserRepository) User(ctx context.Context, id string) (rss.AdminUse
 	}
 
 	stmt = `SELECT EXISTS (SELECT 1 FROM user_features WHERE user_id = $1 AND feature = $2)`
-	if err := r.DB.QueryRowContext(ctx, stmt, id, rss.FeatureNewsletters).Scan(&out.Newsletters); err != nil {
+	if err := r.DB.QueryRowContext(ctx, stmt, id, string(rss.FeatureNewsletters)).Scan(&out.Newsletters); err != nil {
 		return rss.AdminUser{}, err
 	}
 	if out.Counts, err = r.counts(ctx, id); err != nil {

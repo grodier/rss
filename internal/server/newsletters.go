@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"errors"
 	"io"
@@ -15,17 +16,17 @@ import (
 // hasFeature reports whether the request's reader can use feature, one of
 // the rss.Feature constants: they have it, and for newsletters
 // -newsletter-domain is set too.
-func (s *Server) hasFeature(r *http.Request, feature string) bool {
+func (s *Server) hasFeature(r *http.Request, feature rss.Feature) bool {
 	if feature == rss.FeatureNewsletters && s.config.NewsletterDomain == "" {
 		return false
 	}
 	sess, ok := s.authenticatedSession(r)
-	return ok && sess.User.Has(feature)
+	return ok && sess.User.Features.Has(feature)
 }
 
 // requireFeature answers 404 unless the reader can use feature (hasFeature),
 // as debug routes do, so a reader without it can't tell the routes exist.
-func (s *Server) requireFeature(feature string) func(http.Handler) http.Handler {
+func (s *Server) requireFeature(feature rss.Feature) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !s.hasFeature(r, feature) {
@@ -139,6 +140,24 @@ func (s *Server) renderSettingsNewsletters(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// newNewsletterAddress makes user a new current address, trying another
+// random part while the local part is another address's, up to
+// newsletterAddressTries times.
+func (s *Server) newNewsletterAddress(ctx context.Context, user rss.User) error {
+	var err error
+	for range newsletterAddressTries {
+		localPart, lpErr := newsletterLocalPart(user.Name, rand.Reader)
+		if lpErr != nil {
+			return lpErr
+		}
+		_, err = s.services.NewsletterService.NewAddress(ctx, user.ID, localPart)
+		if !errors.Is(err, rss.ErrDuplicateAddress) {
+			return err
+		}
+	}
+	return err
+}
+
 // newsletterAddressForm is Get your address (no New) and Get a new address
 // (New). ReturnTo is where to go after, checked with SafeReturnPath, so My
 // feeds' Newsletters view (#832) can post here too.
@@ -172,18 +191,7 @@ func (s *Server) settingsNewsletterAddressHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	for range newsletterAddressTries {
-		var localPart string
-		localPart, err = newsletterLocalPart(user.Name, rand.Reader)
-		if err != nil {
-			break
-		}
-		_, err = s.services.NewsletterService.NewAddress(r.Context(), user.ID, localPart)
-		if !errors.Is(err, rss.ErrDuplicateAddress) {
-			break
-		}
-	}
-	switch {
+	switch err := s.newNewsletterAddress(r.Context(), user); {
 	case err == nil:
 		if hadAddress {
 			s.sessionManager.Put(r.Context(), "flash", "Here's your new address. Your old one keeps working for 30 days, so you can move your newsletters over.")

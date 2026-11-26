@@ -204,7 +204,7 @@ type UserStore interface {
 	SendLink(ctx context.Context, t rss.Token, m mail.Message, by rss.AuditActor) error
 	MarkConfirmed(ctx context.Context, id, email string, by rss.AuditActor) error
 	LogOutEverywhere(ctx context.Context, id string, by rss.AuditActor) (int, error)
-	SetFeature(ctx context.Context, id, feature string, on bool, by rss.AuditActor) error
+	SetFeature(ctx context.Context, id string, feature rss.Feature, on bool, by rss.AuditActor) error
 	Delete(ctx context.Context, id string, by rss.AuditActor) (rss.User, error)
 }
 

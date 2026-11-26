@@ -1,7 +1,6 @@
 package rss
 
 import (
-	"slices"
 	"strings"
 	"time"
 )
@@ -23,14 +22,7 @@ type User struct {
 	Theme            string    // one of the Theme constants; only a Session's User has it
 	Layout           string    // LayoutHeadlines or LayoutCards; only a Session's User has it
 	CreatedAt        time.Time
-	// Features are the Feature constants the reader has (user_features
-	// rows); only a Session's User has them.
-	Features []string
-}
-
-// Has reports whether the user has feature, one of the Feature constants.
-func (u User) Has(feature string) bool {
-	return slices.Contains(u.Features, feature)
+	Features         Features // the features the reader has; only a Session's User has them
 }
 
 // Themes a user can choose (users.theme). ThemeSystem follows the device's
@@ -48,13 +40,43 @@ const (
 	LayoutCards     = "cards"
 )
 
-// Features a reader can have beyond the base app (user_features.feature);
-// a user_features row means they have it.
+// Feature is a feature a reader can have beyond the base app, by its name
+// in user_features.feature; a user_features row means they have it.
+type Feature string
+
+// The features a reader can have.
 const (
 	// FeatureNewsletters gives a reader an address that turns newsletters
 	// into feeds.
-	FeatureNewsletters = "newsletters"
+	FeatureNewsletters Feature = "newsletters"
 )
+
+// Features is a set of Feature values: the features a reader has. Unlike a
+// slice it's comparable, so a User stays comparable with ==; the zero value
+// is the empty set.
+type Features uint8
+
+// featureBits is each Feature's bit in Features.
+var featureBits = map[Feature]Features{
+	FeatureNewsletters: 1 << 0,
+}
+
+// NewFeatures returns the set of fs. A feature it doesn't know is left out:
+// during a deploy the database can hold a feature that only the new
+// version knows.
+func NewFeatures(fs ...Feature) Features {
+	var set Features
+	for _, f := range fs {
+		set |= featureBits[f]
+	}
+	return set
+}
+
+// Has reports whether f is in the set.
+func (fs Features) Has(f Feature) bool {
+	bit := featureBits[f]
+	return bit != 0 && fs&bit != 0
+}
 
 // SessionIdleTimeout ends a reader's login (a user_sessions row) that
 // hasn't been used for this long; the row is deleted at their next login.

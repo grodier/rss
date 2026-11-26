@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -303,7 +302,7 @@ func TestAuthenticate(t *testing.T) {
 				if gotID != user.ID {
 					t.Errorf("authenticatedUserID = %q, want %q", gotID, user.ID)
 				}
-				if gotSess.ID != sessID || !reflect.DeepEqual(gotSess.User, user) {
+				if gotSess.ID != sessID || gotSess.User != user {
 					t.Errorf("authenticatedSession = %+v, want ID %q and user %+v", gotSess, sessID, user)
 				}
 			}

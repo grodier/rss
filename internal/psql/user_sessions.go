@@ -52,15 +52,15 @@ func (r *UserSessionRepository) Get(ctx context.Context, id string) (rss.Session
 	// The user's features come along in the same query, since Settings
 	// and the newsletter routes read them on every request.
 	stmt := `SELECT s.id, s.last_seen_at, u.id, u.name, u.email, u.email_confirmed_at, u.theme, u.layout, u.created_at,
-			ARRAY(SELECT f.feature FROM user_features f WHERE f.user_id = u.id ORDER BY f.feature)
+			ARRAY(SELECT f.feature FROM user_features f WHERE f.user_id = u.id)
 		FROM user_sessions s JOIN users u ON u.id = s.user_id
 		WHERE s.id = $1`
 
 	var s rss.Session
 	var emailConfirmedAt sql.NullTime
-	var features pq.StringArray
+	var features []string
 	err := r.DB.QueryRowContext(ctx, stmt, id).Scan(
-		&s.ID, &s.LastSeenAt, &s.User.ID, &s.User.Name, &s.User.Email, &emailConfirmedAt, &s.User.Theme, &s.User.Layout, &s.User.CreatedAt, &features)
+		&s.ID, &s.LastSeenAt, &s.User.ID, &s.User.Name, &s.User.Email, &emailConfirmedAt, &s.User.Theme, &s.User.Layout, &s.User.CreatedAt, pq.Array(&features))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return rss.Session{}, rss.ErrNoRecord
@@ -68,8 +68,8 @@ func (r *UserSessionRepository) Get(ctx context.Context, id string) (rss.Session
 		return rss.Session{}, err
 	}
 	s.User.EmailConfirmedAt = emailConfirmedAt.Time
-	if len(features) > 0 {
-		s.User.Features = features
+	for _, name := range features {
+		s.User.Features |= rss.NewFeatures(rss.Feature(name))
 	}
 	return s, nil
 }

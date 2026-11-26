@@ -125,7 +125,6 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **A sections page:** add, rename, reorder and delete Discover's sections from the admin, and merge one into another (move its feeds, then delete it); the decisions under "First run and discovery" already make renames free and refuse deleting a section with feeds, and waitlist and account answers ignore a dropped section's ID.
 - [ ] **Several feeds of one site in one seed upload, and OPML files whose folders are sections** (from #649): curated lists often come as OPML with several feeds per site, but the lookup queue holds one row per site key, so #711 takes one line per site; this needs lookups (or the importer) to take several addresses of one site.
 - [ ] **Delete or edit seed list entries** (from #649), if wanted: a seeded site is an ordinary site once found, so removing its entry only stops retries.
-- [ ] **Inbound emails on the queues page** (#828, #829): failed `inbound_emails` rows grouped by error, with retry and delete, like the other queues; and the overview counting newsletters (addresses, feeds, emails received a day), as totals only.
 - [ ] **Database page:** table sizes, connections, `pg_stat_statements` if Render allows it, and EXPLAINs of the reading queries `tools/loadseed` measures.
 - [ ] **Cleanup jobs, with a dry run first:** expired sessions and tokens, and accounts never confirmed and unused for 30 days after signup (only if they pile up).
 - [ ] **Performance watchlist board:** each watchlist entry's signal, read live.
@@ -233,6 +232,8 @@ Each with when it pays off:
   Many sign-up forms refuse `+`, so named addresses would come first.
 - [ ] **Ask newsletter platforms to recognize our address domain** (once newsletters are past testing).
   Buttondown skips double opt-in for readers' domains (`feedb.in`, `feedly.email`, Readwise's, Matter's…) and asks to be told about missing ones; others may follow.
+- [ ] **Re-look up Discover's catalog sites for their newsletters.**
+  #836 records a site's newsletter when the site is next looked up, which only happens when someone asks; queueing a re-lookup of the catalog's sites at the seed list's priority would fill them in.
 - [ ] **Newsletters in Discover's catalog.**
   Sites with a newsletter #836 found could be listed in Discover's sections as newsletters, with the same copy-and-sign-up row.
 - [ ] **Unfollowing also takes the feed out of the reader's custom timelines, without saying so** (found in #752).
@@ -780,7 +781,7 @@ Other background work (#302, #304, #306):
   *Signal:* `/discover` p95 over 200 ms on the admin's endpoints page with these queries in `pg_stat_statements`.
   *Fix:* check only whether the latest import has a pending feed (`EXISTS`), counting its feeds only then, and cap the subscription count at 10.
 
-Newsletters (planned in #827–#838):
+Newsletters (planned in #839):
 
 - [ ] **Raw emails stored in Postgres** (#828).
   Each received email is an `inbound_emails` row with the raw message (up to 5 MiB) until the runner processes it, and a failed one stays 7 days; newsletters with inline images are often several hundred KB.
@@ -790,14 +791,19 @@ Newsletters (planned in #827–#838):
   A newsletter sent to a thousand readers is a thousand `articles` rows with its full HTML, since each copy carries the reader's own links; email HTML is several times a feed article's.
   *Signal:* newsletter feeds' articles become a large share of the `articles` table's size, or the database's disk.
   *Fix:* keep newsletter articles for less time than others (with "how long to keep articles" under "Feed ingestion"), or store the body once per content hash with the personal links kept apart.
-- [ ] **Queries that list feeds across readers leave newsletter feeds out** (#829).
+- [ ] **Queries that list feeds across readers leave newsletter feeds out** (#840).
   Search, Discover, site pages, enrichment and the admin's lists gain `owner_id IS NULL`; while newsletter feeds are few it costs nothing.
   *Signal:* those queries' plans filter out many owned rows, or newsletter feeds outnumber web feeds.
+  Most leave out the internal `newsletters` site by host, which costs nothing; the feed-level conditions are the ones to watch.
   *Fix:* partial indexes `WHERE owner_id IS NULL` on the indexes those queries use.
 - [ ] **One runner processes all received mail** (#829).
   One worker by default parses each email and saves it in a transaction; a burst (a big newsletter going to many readers at once) queues behind it.
   *Signal:* the oldest unprocessed `inbound_emails` row is more than 5 minutes old, or the runner's job metrics show a growing backlog.
   *Fix:* more workers (`-newsletter-workers`), which `SKIP LOCKED` already allows.
+- [ ] **The confirmation notice adds a query to Home and My feeds** (#833).
+  For readers with newsletters, each view looks for their newest waiting confirmation in `held_emails` (indexed by reader).
+  *Signal:* the query shows up in `pg_stat_statements` by total time, or Home's p95 rises after #833.
+  *Fix:* keep a "confirmation waiting" flag on the reader's address row, set and cleared by the runner and the page's actions.
 - [ ] **Held mail is kept per reader for 30 days** (#833).
   Other mail and confirmations sit in `held_emails` with their HTML; a leaked address can collect a lot of spam before the reader blocks it.
   *Signal:* `held_emails` passes a million rows, or one reader holds thousands.

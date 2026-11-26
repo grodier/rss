@@ -624,12 +624,12 @@ Planned in #309 (issues #302, #303).
 
 ### Newsletters
 
-Planned in #839 (issues #826–#829 and #831–#838), after researching how Feedbin, Inoreader, Feedly, Readwise Reader, Feeder, NewsBlur, Kill the Newsletter and Meco handle newsletters.
+Planned in #839 (issues #826–#829, #831–#838 and #840–#844), after researching how Feedbin, Inoreader, Feedly, Readwise Reader, Feeder, NewsBlur, Kill the Newsletter and Meco handle newsletters.
 The look and feel isn't decided here: each issue with a design checkpoint starts from the planning prototype, expects several rounds, and records what's approved.
 
 - **One address per reader, and one feed per sender** (the owner's pick of three).
   A reader copies one address once; each newsletter becomes its own feed, which they can rename, tag, put in timelines and unfollow like any feed.
-  Senders are told apart by `List-Id`, else the From address, so one publisher's several newsletters stay apart.
+  Senders are told apart by `List-Id` when its domain matches the authenticated sending domain, else by the From address (#829), so one publisher's several newsletters stay apart and a sender can't put its mail in another newsletter's feed.
   Rejected: an address per newsletter, made before signing up (Inoreader, Feedly), which contains a leak to one newsletter but adds a step every time; and one address plus optional extras (Feedbin), more to build and explain.
   Extra addresses and plus-addressing are in the backlog.
 - **The address is readable plus random**, like `george.k7x2m9@in.paperround.app` (#827): recognizable in a sign-up form, and unguessable.
@@ -655,9 +655,10 @@ The look and feel isn't decided here: each issue with a design checkpoint starts
   That a newsletter exists is public, like a feed's link; what it sends is private.
   The reader copies their address and signs up on the publisher's page; one-tap sign-up (submitting the form for them) is in the backlog, since CAPTCHAs, platforms' terms and changing forms make it fragile.
   Learning which newsletters exist from received mail would be cross-user use (see "Cross-user use (later)" under "Filtering and timelines"), so it's in the backlog too.
-- **Unfollowing a newsletter unsubscribes and blocks** (#835): a real one-click unsubscribe (RFC 8058) when the sender offers it, and a block either way, so nothing more arrives.
+- **Unfollowing a newsletter mutes it and offers a real unsubscribe** (#829, #835): its mail is dropped until the reader follows it again, and a one-click unsubscribe (RFC 8058) is sent when the sender offers it.
   Elsewhere unfollowing only hides the newsletter while the sender keeps mailing (Feeder), or blocks without unsubscribing (Readwise).
   We never GET an unsubscribe link, which is what RFC 8058 exists to stop.
+  Blocks are only for senders without a feed (other mail, #833), so one mechanism covers each case, and the Blocked senders page lists both with a way to undo each.
 - **Replying opens the reader's own mail app** (#832): a `mailto:` link to the newsletter's Reply-To.
   No reader we looked at sends replies; sending from the app would make every address a way to send mail, and replies to replies would come back as articles.
 - **We never forward mail out** (#834).
@@ -669,13 +670,20 @@ The look and feel isn't decided here: each issue with a design checkpoint starts
   Share appears only on a newsletter article that is a copy of a public feed's article, with that article's link (#832, #837).
 - **Access is a per-reader feature in a table, granted in the admin** (#826), not a flag like `-debug-emails`.
   The owner wants test accounts first and possibly a paid plan later: billing will grant the same row, so who has access, and why, is one query.
-  Losing access refuses new mail and keeps everything already received readable.
+  Losing access refuses new mail and hides the Newsletters page; newsletter feeds and their articles stay readable in the timeline, My feeds and Saved.
+  The refusal is permanent to senders, who usually drop the address, so newsletters don't come back if access does (#828).
 - **Mail arrives through Cloudflare Email Routing and a small Worker that posts the raw message to a signed endpoint** (#828).
   The DNS is already in Cloudflare, and Email Routing is free; if sending moves to SES, receiving can stay or move, since the app takes "a signed raw message over HTTPS" from any adapter ("Portable by contract" under "Deployment").
   Rejected: Resend's inbound mail (a metadata-only webhook, then an API call per email through Resend-specific code) and SES receiving (S3, SNS and IAM before anything works, and it accepts everything, so refusals become bounces to forged senders).
   The Worker refuses unknown addresses during delivery, so we never send bounces.
-- **Mail that fails the sender's authentication is dropped, and so is mail claiming to be from `paperround.app`** (#829), so a forged email can't pose as a newsletter or as the app in a reader's timeline.
+- **Only Cloudflare's own verdict on the sender is trusted** (#829): the topmost `Authentication-Results` with Cloudflare's authserv-id, since senders can add their own.
+  DMARC must pass, or, when the sender's domain has no DMARC policy (as with many newsletters sent through an email service), DKIM from any domain.
+  Mail that fails is held under Other mail with the reason (#833), never put in the timeline, so a forged email can't pose as a newsletter; mail claiming to be from `paperround.app` is dropped.
+- **The app never mails a newsletter address** (#827): signup, email changes, the waitlist and invites refuse addresses at the newsletter domain, since the Worker would refuse the app's own mail and the bounce would count against our sending domain.
 - **Received emails are stored first and processed by a runner** (#828, #829), so a parsing bug never bounces mail; raw messages are deleted once processed.
+- **Newsletters arrive as news, at the time received** (#829), not as a feed's backlog, however long since the newsletter's last issue.
+- **Newsletter feeds are made private before mail creates them** (#840): owned feeds and the one internal site they belong to are left out of every path across readers, listed in that issue, with a test for each.
+- **The admin sees newsletters as facts and counts, never as reading** (#841–#844): a reader's address and counts, with Replace their address (and stopping the old one at once for a flooded address); inbound mail's queue, outcomes and failures; a block for every reader, with spam candidates found as senders of other mail that reached 3 or more readers in a week; and a test email twice a day to check that mail gets in.
 - **Newsletters aren't tied to a plan yet** (#826): while pre-alpha, the admin grants access to test accounts; whether newsletters become part of a paid plan is decided with "Paid plans and billing" (backlog.md), and billing then grants the same row.
 
 ## Reading

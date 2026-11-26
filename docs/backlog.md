@@ -791,7 +791,7 @@ Newsletters (planned in #839):
   A newsletter sent to a thousand readers is a thousand `articles` rows with its full HTML, since each copy carries the reader's own links; email HTML is several times a feed article's.
   *Signal:* newsletter feeds' articles become a large share of the `articles` table's size, or the database's disk.
   *Fix:* keep newsletter articles for less time than others (with "how long to keep articles" under "Feed ingestion"), or store the body once per content hash with the personal links kept apart.
-- [ ] **Queries that list feeds across readers leave newsletter feeds out** (#840).
+- [ ] **Queries that list feeds across readers leave newsletter feeds out** (#846).
   Search, Discover, site pages, enrichment and the admin's lists gain `owner_id IS NULL`; while newsletter feeds are few it costs nothing.
   *Signal:* those queries' plans filter out many owned rows, or newsletter feeds outnumber web feeds.
   Most leave out the internal `newsletters` site by host, which costs nothing; the feed-level conditions are the ones to watch.
@@ -800,7 +800,7 @@ Newsletters (planned in #839):
   One worker by default parses each email and saves it in a transaction; a burst (a big newsletter going to many readers at once) queues behind it.
   *Signal:* the oldest unprocessed `inbound_emails` row is more than 5 minutes old, or the runner's job metrics show a growing backlog.
   *Fix:* more workers (`-newsletter-workers`), which `SKIP LOCKED` already allows.
-- [ ] **The confirmation notice adds a query to Home and My feeds** (#833).
+- [ ] **The confirmation notice adds a query to Home and My feeds** (#847).
   For readers with newsletters, each view looks for their newest waiting confirmation in `held_emails` (indexed by reader).
   *Signal:* the query shows up in `pg_stat_statements` by total time, or Home's p95 rises after #833.
   *Fix:* keep a "confirmation waiting" flag on the reader's address row, set and cleared by the runner and the page's actions.

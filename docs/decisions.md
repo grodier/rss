@@ -624,7 +624,7 @@ Planned in #309 (issues #302, #303).
 
 ### Newsletters
 
-Planned in PLANNING_PR (issues #826–#829 and #831–#838), after researching how Feedbin, Inoreader, Feedly, Readwise Reader, Feeder, NewsBlur, Kill the Newsletter and Meco handle newsletters.
+Planned in #839 (issues #826–#829 and #831–#838), after researching how Feedbin, Inoreader, Feedly, Readwise Reader, Feeder, NewsBlur, Kill the Newsletter and Meco handle newsletters.
 The look and feel isn't decided here: each issue with a design checkpoint starts from the planning prototype, expects several rounds, and records what's approved.
 
 - **One address per reader, and one feed per sender** (the owner's pick of three).

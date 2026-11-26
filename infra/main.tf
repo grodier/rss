@@ -24,8 +24,8 @@ locals {
     RSS_SUPPORT_EMAIL = { value = "rss-support@georgerodier.com" }
   }
 
-  # The domain of readers' newsletter addresses (#827): www gives readers
-  # addresses there, and both services refuse it as an account's email.
+  # The domain of readers' newsletter addresses: both services refuse it as
+  # an account's email (#865), and www gives readers addresses there (#827).
   newsletter_domain = "in.paperround.app"
 }
 

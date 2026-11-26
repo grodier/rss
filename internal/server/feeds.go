@@ -164,8 +164,10 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 			return discovery.KindOf(sub.Site.Host) != kind.Kind
 		})
 	}
+	// A user with no feeds at all gets the page's empty state, not a
+	// filter, whatever the URL's kind.
 	var kinds []kindLink
-	if len(has) > 1 || kind.Kind != "" {
+	if total > 0 && (len(has) > 1 || kind.Kind != "") {
 		kinds = append(kinds, kindLink{Label: "All", URL: feedsURL("", sort, q), Current: kind.Kind == ""})
 		for _, fk := range feedKinds {
 			// The current kind is listed even when the user has none of
@@ -176,7 +178,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var none string
-	if len(subs) == 0 {
+	if total > 0 && len(subs) == 0 {
 		none = kind.None
 	}
 

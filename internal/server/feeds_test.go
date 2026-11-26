@@ -2762,6 +2762,16 @@ func TestFeedsHandlerKinds(t *testing.T) {
 		}
 	})
 
+	t.Run("no feeds at all: the empty state, whatever the kind", func(t *testing.T) {
+		_, body := getFeedsURL(t, listing(), "/feeds?kind=videos")
+		assertEmptyState(t, body, "You're not following any feeds yet.", "", "/discover")
+		for _, not := range []string{"data-kind-link", "video channels"} {
+			if strings.Contains(body, not) {
+				t.Errorf("body contains %q: %s", not, body)
+			}
+		}
+	})
+
 	t.Run("one feed in a kind has a search but no sort", func(t *testing.T) {
 		_, body := getFeedsURL(t, all(), "/feeds?kind=social")
 		if !strings.Contains(body, `id="feeds-q"`) || strings.Contains(body, "data-sort-link") {

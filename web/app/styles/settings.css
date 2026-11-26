@@ -1,6 +1,7 @@
 /* The pages that manage things: Settings (imports among them), My feeds
    (with its kinds' tabs), tags, subscriptions, the Timelines page with the
-   timeline form, and a timeline's share page. In the partials' order (see base.css). */
+   timeline form, and a timeline's share page. In the partials' order (see
+   base.css). */
 @import "./partials/empty.css";
 @import "./partials/copied.css";
 @import "./partials/profiles.css";

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grodier/rss/internal/cli"
+	"github.com/grodier/rss/internal/validator"
 )
 
 type config struct {
@@ -33,6 +34,9 @@ type serverConfig struct {
 	// debugEmails are the accounts that may turn on debug mode, lowercased;
 	// empty turns debug mode off.
 	debugEmails []string
+	// newsletterDomain is the domain of readers' newsletter addresses, like
+	// in.paperround.app; empty turns newsletters off for everyone.
+	newsletterDomain string
 }
 
 type lookupConfig struct {
@@ -118,6 +122,9 @@ func (c config) Validate() error {
 			errs = append(errs, fmt.Errorf("debug-emails: %q is not an email address", e))
 		}
 	}
+	if c.server.newsletterDomain != "" && !validator.Matches(c.server.newsletterDomain, validator.DomainRX) {
+		errs = append(errs, fmt.Errorf("invalid newsletter domain %q: must be a lowercase host name, like in.paperround.app", c.server.newsletterDomain))
+	}
 	if c.db.dsn == "" {
 		errs = append(errs, errors.New("database DSN must not be empty"))
 	}
@@ -158,6 +165,8 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 
 	var debugEmails string
 	fs.StringVar(&debugEmails, "debug-emails", "", "Accounts that may turn on debug mode, comma-separated (default: debug mode off)")
+
+	fs.StringVar(&cfg.server.newsletterDomain, "newsletter-domain", "", "Domain of readers' newsletter addresses, like in.paperround.app (default: newsletters off)")
 
 	fs.IntVar(&cfg.server.proxyHops, "proxy-hops", cfg.server.proxyHops, "Reverse proxies in front of the app that append to X-Forwarded-For (0-3; 0 ignores the header)")
 

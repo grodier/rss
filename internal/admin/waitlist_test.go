@@ -21,7 +21,7 @@ const testAppURL = "https://app.example.com"
 func waitlistServer(t *testing.T, wl *fakeWaitlist, inv *fakeInvites, em *fakeEmails) *browser {
 	t.Helper()
 	cfg := Config{Port: 4001, Env: "development", Version: "test", BaseURL: "http://localhost:4001",
-		AppURL: testAppURL, MailLimits: MailLimits{Daily: 100, Monthly: 3000, Reserve: 10}}
+		AppURL: testAppURL, MailLimits: MailLimits{Daily: 100, Monthly: 3000, Reserve: 10}, NewsletterDomain: "in.localhost"}
 	s, _ := newTestServerWithAdminConfig(t, cfg, Services{Database: pinger{}, Waitlist: wl, Invites: inv, Emails: em})
 	return loggedIn(t, s)
 }

@@ -60,6 +60,7 @@ func (s *Server) settingsEmailFormHandler(w http.ResponseWriter, r *http.Request
 	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
 	form.CheckField(!strings.EqualFold(form.Email, user.Email), "email", "That's already your email address.")
+	form.CheckNotNewsletterAddress("email", form.Email, s.config.NewsletterDomain)
 	form.CheckField(validator.NotBlank(form.Password), "password", "Enter your password.")
 	if !form.Valid() {
 		s.renderSettingsEmail(w, r, http.StatusUnprocessableEntity, form)

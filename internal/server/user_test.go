@@ -174,6 +174,27 @@ func TestSignupOpenInvite(t *testing.T) {
 	}
 }
 
+func TestSignupRefusesNewsletterAddress(t *testing.T) {
+	created := false
+	s := newSignupTestServer(t, Services{UserService: &fakeUserStore{
+		createFromInviteFn: func(context.Context, []byte, string, string, string) (string, string, error) {
+			created = true
+			return "user-1", "", nil
+		},
+	}})
+	s.config.NewsletterDomain = "in.localhost"
+
+	form := url.Values{"invite": {testInviteToken}, "name": {"Test User"}, "email": {"test.abc234@in.localhost"}, "password": {"correct-horse-battery"}}
+	rr := postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP, "/signup", "192.0.2.1:1234", form)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)
+	}
+	assertBodyContains(t, rr.Body.String(), `<p class="error" id="email-error">Use your own email address; this one is for newsletters.</p>`)
+	if created {
+		t.Error("the account was created")
+	}
+}
+
 func TestSignupBoundInvite(t *testing.T) {
 	const bound = "invite-bound-token-0123"
 	invites := &fakeInviteStore{invites: map[string]rss.Invite{

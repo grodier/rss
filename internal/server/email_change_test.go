@@ -99,10 +99,12 @@ func TestSettingsEmailForm(t *testing.T) {
 		{"blank password", "new@example.com", "", "password", "Enter your password."},
 		{"wrong password", "new@example.com", "wrong-password", "password", "That password isn&#39;t right."},
 		{"taken address", "Taken@example.com", changeEmailPassword, "email", "There&#39;s already an account with this email."},
+		{"newsletter address", "ada.abc234@in.localhost", changeEmailPassword, "email", "Use your own email address; this one is for newsletters."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, tokens, queue := newChangeEmailTestServer(t)
+			s.config.NewsletterDomain = "in.localhost"
 			rr, flash := postSettingsEmail(t, s, tt.email, tt.password)
 
 			if rr.Code != http.StatusUnprocessableEntity {

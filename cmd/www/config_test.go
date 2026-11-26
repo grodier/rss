@@ -289,3 +289,27 @@ func TestParseConfigMail(t *testing.T) {
 		}
 	})
 }
+
+func TestParseConfigNewsletterDomain(t *testing.T) {
+	dsn := []string{"-db-dsn", "postgres://x"}
+	cfg, err := parseConfig(dsn, func(k string) string {
+		if k == "RSS_NEWSLETTER_DOMAIN" {
+			return "in.localhost"
+		}
+		return ""
+	}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.server.newsletterDomain != "in.localhost" {
+		t.Errorf("newsletterDomain = %q, want in.localhost", cfg.server.newsletterDomain)
+	}
+	if cfg, err := parseConfig(dsn, noEnv, io.Discard); err != nil || cfg.server.newsletterDomain != "" {
+		t.Errorf("by default: %q, %v; want off", cfg.server.newsletterDomain, err)
+	}
+	for _, bad := range []string{"In.Example.com", "localhost", "x@in.example.com", "https://in.example.com"} {
+		if _, err := parseConfig(append(dsn, "-newsletter-domain", bad), noEnv, io.Discard); err == nil || !strings.Contains(err.Error(), "invalid newsletter domain") {
+			t.Errorf("%q: parseConfig() error = %v, want an invalid newsletter domain", bad, err)
+		}
+	}
+}

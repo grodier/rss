@@ -236,6 +236,7 @@ func TestNewInvite(t *testing.T) {
 		want string
 	}{
 		{"not an email", url.Values{"email": {"nope"}, "days": {"14"}}, nil, "Enter an email address, or leave it empty."},
+		{"a newsletter address", url.Values{"email": {"Sam.abc234@IN.localhost"}, "days": {"14"}}, nil, "Use your own email address; this one is for newsletters."},
 		{"not on the waitlist", url.Values{"email": {"someone@example.com"}, "days": {"14"}}, nil, "No one with this email is confirmed on the waitlist."},
 		{"unconfirmed", url.Values{"email": {"person4@example.com"}, "days": {"14"}}, nil, "No one with this email is confirmed on the waitlist."},
 		{"already invited", url.Values{"email": {"person3@example.com"}, "days": {"14"}}, nil, "person3@example.com already has an invite waiting to be used"},

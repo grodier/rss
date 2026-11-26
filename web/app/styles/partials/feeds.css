@@ -176,6 +176,18 @@
     display: none;
   }
 
+  /* My feeds' sort under its search: its label, then the choices as a
+     segmented control (settings.css). */
+  .feeds-sort {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    padding: 0 1rem 0.75rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
+  }
+
   /* An icon-only control at the end of a row, like My feeds' Edit. */
   .row-icon-btn {
     display: inline-flex;

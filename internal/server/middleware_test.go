@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -439,6 +441,79 @@ func TestCacheControl(t *testing.T) {
 			})
 		}
 	}
+}
+
+// TestEmailLinkHeaders checks that every response of the routes email links
+// open, GET and POST, keeps their token out of Referer headers and caches,
+// and that the routes around them don't get those headers. It goes through
+// the router, so it checks those routes have emailLink. The fakes know no
+// token: whatever each route answers, the headers are the point.
+func TestEmailLinkHeaders(t *testing.T) {
+	noRecord := func(context.Context, []byte) (string, error) { return "", rss.ErrNoRecord }
+	s := newTestServerWith(t, Services{
+		TokenService: &fakeTokenStore{getFn: func(context.Context, []byte, string) (rss.Token, error) {
+			return rss.Token{}, rss.ErrNoRecord
+		}},
+		UserService: &fakeUserStore{
+			confirmEmailFn: noRecord,
+			changeEmailFn: func(context.Context, []byte) (rss.User, string, error) {
+				return rss.User{}, "", rss.ErrNoRecord
+			},
+		},
+		InviteService:   &fakeInviteStore{},
+		WaitlistService: &fakeWaitlistStore{},
+	})
+	form := url.Values{"token": {"unknown"}, "invite": {"unknown"}, "password": {"correct-horse-battery"}}
+
+	tests := []struct {
+		name string
+		req  *http.Request
+	}{
+		{"GET /signup", httptest.NewRequest(http.MethodGet, "/signup?invite=unknown", nil)},
+		{"GET /signup with no invite", httptest.NewRequest(http.MethodGet, "/signup", nil)},
+		{"POST /signup", postFormRequest("/signup", form)},
+		{"GET /confirm-email", httptest.NewRequest(http.MethodGet, "/confirm-email?token=unknown", nil)},
+		{"POST /confirm-email", postFormRequest("/confirm-email", form)},
+		{"GET /email-change", httptest.NewRequest(http.MethodGet, "/email-change?token=unknown", nil)},
+		{"POST /email-change", postFormRequest("/email-change", form)},
+		{"GET /waitlist/confirm", httptest.NewRequest(http.MethodGet, "/waitlist/confirm?token=unknown", nil)},
+		{"POST /waitlist/confirm", postFormRequest("/waitlist/confirm", form)},
+		{"GET /waitlist/leave", httptest.NewRequest(http.MethodGet, "/waitlist/leave?token=unknown", nil)},
+		{"POST /waitlist/leave", postFormRequest("/waitlist/leave", form)},
+		{"GET /password/reset", httptest.NewRequest(http.MethodGet, "/password/reset?token=unknown", nil)},
+		{"POST /password/reset", postFormRequest("/password/reset", form)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			s.router().ServeHTTP(rr, tt.req)
+			if rr.Code >= http.StatusInternalServerError {
+				t.Fatalf("status = %d", rr.Code)
+			}
+			if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
+				t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+			}
+			// scs adds no-cache="Set-Cookie" after it when the response
+			// writes the session cookie.
+			if got := rr.Header().Values("Cache-Control"); !slices.Contains(got, "no-store") {
+				t.Errorf("Cache-Control = %q, want no-store among them", got)
+			}
+		})
+	}
+
+	t.Run("a route outside the group", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		s.router().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/password/forgot", nil))
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+		}
+		if got := rr.Header().Get("Referrer-Policy"); got != "origin-when-cross-origin" {
+			t.Errorf("Referrer-Policy = %q, want origin-when-cross-origin", got)
+		}
+		if got := rr.Header().Values("Cache-Control"); slices.Contains(got, "no-store") {
+			t.Errorf("Cache-Control = %q, want no no-store", got)
+		}
+	})
 }
 
 func TestCommonHeadersCSP(t *testing.T) {

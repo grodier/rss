@@ -158,11 +158,6 @@ func (s *Server) renderResetPassword(w http.ResponseWriter, r *http.Request, sta
 // plain. When there's none, or on an error, it has responded and returns
 // false.
 func (s *Server) resetToken(w http.ResponseWriter, r *http.Request, plain string) (rss.Token, bool) {
-	// The token is in the URL or the page: keep it out of Referer headers
-	// and caches.
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-
 	t, err := s.services.TokenService.Get(r.Context(), token.Hash(plain), rss.TokenResetPassword)
 	if err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {

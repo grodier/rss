@@ -122,7 +122,6 @@ func TestSignupInviteStates(t *testing.T) {
 			if rr.Code != http.StatusGone {
 				t.Fatalf("GET status = %d, want %d", rr.Code, http.StatusGone)
 			}
-			assertNoReferrerNoStore(t, rr)
 			assertBodyContains(t, rr.Body.String(), tt.want...)
 			if strings.Contains(rr.Body.String(), "<form") {
 				t.Error("GET body has a form")
@@ -155,7 +154,6 @@ func TestSignupOpenInvite(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("GET status = %d, want %d", rr.Code, http.StatusOK)
 	}
-	assertNoReferrerNoStore(t, rr)
 	body := rr.Body.String()
 	assertBodyContains(t, body, `<input type="hidden" name="invite" value="`+testInviteToken+`" />`, `name="email" value=""`)
 	if strings.Contains(body, "readonly") || strings.Contains(body, "This invite is for this address.") {
@@ -165,7 +163,6 @@ func TestSignupOpenInvite(t *testing.T) {
 	form := url.Values{"invite": {testInviteToken}, "name": {"Test User"}, "email": {"typed@example.com"}, "password": {"correct-horse-battery"}}
 	rr = postForm(t, s.sessionManager.LoadAndSave(http.HandlerFunc(s.signupFormHandler)).ServeHTTP, "/signup", "192.0.2.1:1234", form)
 	assertRedirect(t, rr, "/")
-	assertNoReferrerNoStore(t, rr)
 	if string(gotHash) != string(token.Hash(testInviteToken)) {
 		t.Error("CreateFromInvite didn't get the invite's token hash")
 	}

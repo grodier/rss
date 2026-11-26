@@ -142,10 +142,6 @@ type confirmEmailChangePage struct {
 }
 
 func (s *Server) emailChangeHandler(w http.ResponseWriter, r *http.Request) {
-	// The token is in the URL: keep it out of Referer headers and caches.
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-
 	plain := r.URL.Query().Get("token")
 	t, err := s.services.TokenService.Get(r.Context(), token.Hash(plain), rss.TokenChangeEmail)
 	if err != nil {

@@ -1504,8 +1504,7 @@ In these flows, trade-offs favor the user's experience.
   They're single use; asking again doesn't cancel earlier links (emails arrive out of order), and using one deletes the rest of its kind.
   Confirmation links last 7 days, email change 24 hours, reset 1 hour.
   Confirmation and reset links only work while the account still has the address they were sent to.
-  Pages with a token in the URL send `Referrer-Policy: no-referrer`.
-  #807 makes that one middleware on the email-link routes, so every response of those routes, GET and POST, gets `no-referrer` and `no-store`, including ones that carry no token (the invite-only `/signup`), as one rule for the routes is simpler than one per response.
+  Every response of an email-link route, GET and POST, sends `Referrer-Policy: no-referrer` and `Cache-Control: no-store` (#807), including ones that carry no token (the invite-only `/signup`), as one rule for the routes is simpler than one per response.
 - **Confirming on a device where you aren't logged in says it's done** (#444): a page saying the address is confirmed, with a way on, rather than the login page with a flash, which read as if logging in were part of confirming.
   It never logs anyone in, and being logged in as another account gets the same page rather than Home with a flash about an address that isn't theirs.
   The page is its own route (`/confirm-email/done`, static) so a reload doesn't re-post a used token.

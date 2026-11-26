@@ -172,6 +172,19 @@ func (s *Server) privateCache(next http.Handler) http.Handler {
 	})
 }
 
+// emailLink keeps an email link's token, in its URL or its page, out of
+// Referer headers and caches. The router applies it to every route an
+// email link opens, GET and POST, so every response of those routes gets
+// both headers, even one that carries no token.
+func (s *Server) emailLink(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // sessionTouchInterval is how out of date last_seen_at may get before a
 // request updates it.
 const sessionTouchInterval = 24 * time.Hour

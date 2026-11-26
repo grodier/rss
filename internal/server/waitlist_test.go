@@ -414,18 +414,6 @@ func newWaitlistEntry(t *testing.T, store *fakeWaitlistStore, confirmed bool) st
 	return plain
 }
 
-// assertNoReferrerNoStore checks that rr keeps its token out of Referer
-// headers and caches.
-func assertNoReferrerNoStore(t *testing.T, rr *httptest.ResponseRecorder) {
-	t.Helper()
-	if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
-		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
-	}
-	if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-		t.Errorf("Cache-Control = %q, want no-store", got)
-	}
-}
-
 // testWaitlistLink checks a waitlist email link: GET shows its page with
 // the button and doesn't write; POST acts (check says it did) and goes home
 // with flash; an unknown token is the expired-link page.
@@ -436,7 +424,6 @@ func testWaitlistLink(t *testing.T, path string, get, post http.HandlerFunc, sto
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
-		assertNoReferrerNoStore(t, rr)
 		assertBodyContains(t, rr.Body.String(), append(wantPage,
 			`<form action="`+path+`" method="post">`,
 			`<input type="hidden" name="token" value="`+plain+`" />`,
@@ -451,7 +438,6 @@ func testWaitlistLink(t *testing.T, path string, get, post http.HandlerFunc, sto
 		plain := newWaitlistEntry(t, store, false)
 		rr, gotFlash := serveConfirm(t, s, post, postFormRequest(path, url.Values{"token": {plain}}), nil)
 		assertRedirect(t, rr, "/")
-		assertNoReferrerNoStore(t, rr)
 		if gotFlash != flash {
 			t.Errorf("flash = %q, want %q", gotFlash, flash)
 		}
@@ -470,7 +456,6 @@ func testWaitlistLink(t *testing.T, path string, get, post http.HandlerFunc, sto
 			if rr.Code != http.StatusGone {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusGone)
 			}
-			assertNoReferrerNoStore(t, rr)
 			assertBodyContains(t, rr.Body.String(), "<h1>This link has expired</h1>", `<a class="btn" href="/">Join the waitlist</a>`)
 		})
 	}

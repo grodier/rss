@@ -240,12 +240,6 @@ func TestResetPasswordHandler(t *testing.T) {
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 		}
-		if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
-			t.Errorf("Referrer-Policy = %q, want no-referrer", got)
-		}
-		if got := rr.Header().Get("Cache-Control"); got != "no-store" {
-			t.Errorf("Cache-Control = %q, want no-store", got)
-		}
 		assertBodyContains(t, rr.Body.String(),
 			"<h1>Choose a new password</h1>",
 			`<input type="email" id="email" value="ada@example.com" autocomplete="username" readonly />`,
@@ -259,9 +253,6 @@ func TestResetPasswordHandler(t *testing.T) {
 	t.Run("not valid", func(t *testing.T) {
 		rr := get("used-token")
 		assertResetLinkExpired(t, rr)
-		if got := rr.Header().Get("Referrer-Policy"); got != "no-referrer" {
-			t.Errorf("Referrer-Policy = %q, want no-referrer", got)
-		}
 	})
 }
 

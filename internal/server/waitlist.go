@@ -246,18 +246,10 @@ func (s *Server) waitlistEntryByToken(w http.ResponseWriter, r *http.Request, pl
 	return e, true
 }
 
-// noReferrerNoStore keeps an email link's token, in the URL or the page, out
-// of Referer headers and caches.
-func noReferrerNoStore(w http.ResponseWriter) {
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-}
-
 // waitlistLinkHandler returns the GET handler of a waitlist email link: it
 // shows page, whose button posts the token back.
 func (s *Server) waitlistLinkHandler(page string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		noReferrerNoStore(w)
 		plain := r.URL.Query().Get("token")
 		e, ok := s.waitlistEntryByToken(w, r, plain)
 		if !ok {
@@ -278,7 +270,6 @@ type waitlistTokenForm struct {
 // it calls act with the token's hash, then goes home with flash.
 func (s *Server) waitlistActionHandler(act func(ctx context.Context, tokenHash []byte) error, flash string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		noReferrerNoStore(w)
 		var form waitlistTokenForm
 		if err := s.decodePostForm(w, r, &form); err != nil {
 			s.formErrorResponse(w, r, err)

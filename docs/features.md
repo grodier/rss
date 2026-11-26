@@ -11,7 +11,7 @@ User-facing strings, CSS classes and every helper's name live in the code and te
 **Signup and login.** Signup needs a single-use invite (an `invites` row), and no page links to it: people arrive through `/signup?invite=<token>`, the link the admin's invite email or its Invites page gives.
 `signupHandler` looks the invite up by the token's hash (`signupInvite`) and, if it's usable, shows the form with the token in a hidden field; a bound invite (one with an email, sent to a confirmed waitlist entry) fills in the entry's name and its email, locked (`readonly`).
 Without a token the page says the app is invite-only and links to the waitlist; an expired, used, revoked or unknown invite gets a page that says which, with no form (410; `renderInviteUnusable`).
-The page with a token, and the POST, send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, like the email links.
+`/signup` is an email-link route, so every response, GET and POST, keeps the token out of Referer headers and caches (`emailLink`).
 `signupFormHandler` checks the per-IP limit, then the invite again, takes a bound invite's email whatever was submitted, checks the name, email and password with `validator.CheckNewAccount`, and calls `UserRepository.CreateFromInvite`.
 That hashes the password, then in one transaction redeems the invite with a conditional `UPDATE` (so of two signups racing on one invite, only one gets the row; the other gets `rss.ErrInviteUnusable` and the "already been used" page, 422), inserts the user with the default timelines (confirmed if the invite is bound), records the account on the invite, copies the sections of the invite's waitlist entry to the account (`users.sections`, for Discover's order, #643), and deletes the account's waitlist entry, returning its sites answer.
 A taken email rolls it all back, so the invite stays usable, and gets an error on the email field with links to log in or reset the password.
@@ -75,7 +75,7 @@ Asking again doesn't cancel earlier links, since emails arrive out of order.
 Until the address is confirmed, the timeline and Settings show a notice with a Resend button (`confirmResendHandler`, 3 per user per hour).
 
 The link works in any browser, logged in or not.
-`GET /confirm-email` sets `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and `TokenRepository.Get` only returns an unexpired token whose address is still the account's.
+Every response of an email link's route, GET and POST, sends `Referrer-Policy: no-referrer` and `Cache-Control: no-store` (`emailLink`, which the router applies to them), and `TokenRepository.Get` only returns an unexpired token whose address is still the account's.
 A valid token gets a page with a Confirm button that posts it back: the GET never writes, so a mail scanner that opens the link can't confirm.
 `UserRepository.ConfirmEmail` then, in one transaction, deletes the token (checking the same conditions), sets `email_confirmed_at` (keeping an earlier time) and deletes the user's other confirmation tokens.
 Confirming while logged in as that account redirects Home with a flash.
@@ -124,7 +124,7 @@ Log in links to the form for people who arrive there without an account.
 
 **Confirming and leaving.** Each entry has one link token (`token.New`; only its SHA-256 is stored), carried by both of the email's links.
 It doesn't expire, since the leave link must keep working in later emails (the invite), and it's replaced only by joining again while unconfirmed, or by an invite, whose email carries a new one.
-`GET /waitlist/confirm` and `GET /waitlist/leave` send `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, look the entry up and show a page whose button posts the token back, so a mail scanner that opens a link changes nothing.
+`GET /waitlist/confirm` and `GET /waitlist/leave` (email-link routes, so `no-referrer` and `no-store`, like their POSTs: `emailLink`) look the entry up and show a page whose button posts the token back, so a mail scanner that opens a link changes nothing.
 The POSTs confirm (keeping the first `confirmed_at`) or delete the entry and redirect to `/` with a flash.
 An unknown token gets the expired-link page (410).
 Signing up with an invite deletes the entry (see "Signup and login" under "Accounts and sessions"); leaving the list first keeps a bound invite's email but unlinks it from the entry.
@@ -153,7 +153,7 @@ The Waitlist and review tables show each entry's sections by name, read with the
 3. `internal/ui/templates/partials/waitlist.html` and `internal/ui/emails/waitlist_confirm.tmpl`.
 4. The admin's side: `internal/admin/waitlist.go`, `invites.go`, `limits.go` and `seed_add.go` (`seedAddWaitlistHandler`), `internal/psql/invites.go` (`SendWave`, `sendBound`, `Resend`, `Waves`) and `emails.go` (`enqueue`, `Usage`), `internal/ui/admin/waitlist.html`, `waitlist_review.html`, `invites.html` and `invite_new.html`, and `internal/ui/emails/invite.tmpl`.
 
-**Tests:** `internal/server/waitlist_test.go` and `middleware_test.go` (`TestCacheControl`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`, `TestWaitlistRepositorySitesAnswers`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go`, `limits_test.go` and `seed_add_test.go` (`TestSeedAddWaitlist`); `internal/rss/rss_test.go` (`TestSplitSitesAnswer`); `web/admin/features/select.test.ts`.
+**Tests:** `internal/server/waitlist_test.go` and `middleware_test.go` (`TestCacheControl`, `TestEmailLinkHeaders`); `internal/psql/waitlist_test.go` (`TestWaitlistAdminQueries`, `TestWaitlistRepositorySitesAnswers`), `users_test.go` (`TestCreateFromInvite`), `invites_test.go` (`TestSendWave`, `TestInviteWaves`, `TestResend`, `TestSendInvite`) and `emails_test.go` (`TestEmailCounts`); `internal/admin/waitlist_test.go`, `invites_test.go`, `limits_test.go` and `seed_add_test.go` (`TestSeedAddWaitlist`); `internal/rss/rss_test.go` (`TestSplitSitesAnswer`); `web/admin/features/select.test.ts`.
 
 **Why:** "Waitlist and invites" in decisions.md.
 

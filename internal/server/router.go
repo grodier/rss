@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/grodier/rss/internal/rss"
 )
 
 func (s *Server) router() http.Handler {
@@ -131,6 +132,13 @@ func (s *Server) router() http.Handler {
 			r.Get("/settings/imports/{id}", s.importHandler)
 			r.Get("/settings/delete", s.settingsDeleteHandler)
 			r.Post("/settings/delete", s.settingsDeleteFormHandler)
+
+			// Newsletters (#827): a 404 for readers without them.
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireFeature(rss.FeatureNewsletters))
+				r.Get("/settings/newsletters", s.settingsNewslettersHandler)
+				r.Post("/settings/newsletters/address", s.settingsNewsletterAddressHandler)
+			})
 			r.Post("/confirm-email/resend", s.confirmResendHandler)
 
 			r.Group(func(r chi.Router) {

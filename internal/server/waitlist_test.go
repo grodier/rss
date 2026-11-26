@@ -272,6 +272,7 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 	}{
 		{"no email", "email", "", "Email is required"},
 		{"bad email", "email", "not-an-email", "Email must be a valid email address"},
+		{"newsletter address", "email", "sam.abc234@in.localhost", "Use your own email address; this one is for newsletters."},
 		{"no name", "name", "   ", "Name is required"},
 		{"long name", "name", strings.Repeat("a", 101), "Name must not be more than 100 characters long"},
 		{"long sites", "sites", strings.Repeat("é", 501), "Keep this under 500 characters"},
@@ -279,6 +280,7 @@ func TestWaitlistJoinInvalid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, store, queue := newWaitlistTestServer(t)
+			s.config.NewsletterDomain = "in.localhost"
 			rr := postWaitlist(t, s, "192.0.2.1:1234", waitlistValues("ada@example.com", tt.field, tt.value))
 			if rr.Code != http.StatusUnprocessableEntity {
 				t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnprocessableEntity)

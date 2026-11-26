@@ -14,6 +14,7 @@
   {{else if eq .Icon "tag"}}{{template "icon-tag"}}
   {{else if eq .Icon "timeline"}}{{template "icon-timeline"}}
   {{else if eq .Icon "clock"}}{{template "icon-clock"}}
+  {{else if eq .Icon "mail"}}{{template "icon-mail"}}
   {{end}}
   <p class="empty-state-lead">{{.Lead}}</p>
   {{with .Line}}<p>{{.}}</p>{{end}}

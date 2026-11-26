@@ -106,6 +106,8 @@ func serve(cfg config, logger *slog.Logger) error {
 		SupportEmail: cfg.supportEmail,
 		MailLimits:   cfg.mailLimits,
 
+		NewsletterDomain: cfg.newsletterDomain,
+
 		AppInternalURL: cfg.appInternalURL,
 	}, services, sessions)
 	if err != nil {

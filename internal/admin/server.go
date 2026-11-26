@@ -45,6 +45,9 @@ type Config struct {
 	AppURL string
 	// SupportEmail is where people can get help, shown in emails' footers.
 	SupportEmail string
+	// NewsletterDomain is the domain of readers' newsletter addresses; the
+	// invite form refuses addresses there. "" turns the check off.
+	NewsletterDomain string
 	// MailLimits are the email provider's sending limits, which invites are
 	// checked against.
 	MailLimits MailLimits

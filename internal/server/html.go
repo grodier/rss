@@ -60,7 +60,7 @@ type emptyAction struct {
 // emptyStateIcons are the icons the empty-state partial draws, by their
 // partial's name without "icon-" (a template can't call a partial by a
 // computed name, so the partial picks each one by name).
-var emptyStateIcons = []string{"rss", "bookmark", "star", "feeds", "tag", "timeline", "clock"}
+var emptyStateIcons = []string{"rss", "bookmark", "star", "feeds", "tag", "timeline", "clock", "mail"}
 
 // newEmptyState builds an emptyState in a template: actions are pairs of
 // a label and a link, at most two. A wrong call fails the page's render,

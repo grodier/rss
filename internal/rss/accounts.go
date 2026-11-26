@@ -1,6 +1,7 @@
 package rss
 
 import (
+	"slices"
 	"strings"
 	"time"
 )
@@ -22,6 +23,14 @@ type User struct {
 	Theme            string    // one of the Theme constants; only a Session's User has it
 	Layout           string    // LayoutHeadlines or LayoutCards; only a Session's User has it
 	CreatedAt        time.Time
+	// Features are the Feature constants the reader has (user_features
+	// rows); only a Session's User has them.
+	Features []string
+}
+
+// Has reports whether the user has feature, one of the Feature constants.
+func (u User) Has(feature string) bool {
+	return slices.Contains(u.Features, feature)
 }
 
 // Themes a user can choose (users.theme). ThemeSystem follows the device's

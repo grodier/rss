@@ -57,6 +57,7 @@ A flag on the command line wins over its variable, which wins over the default; 
 | `-env` | `RSS_ENV` | `development` | Environment (`development` or `production`; `production` logs JSON) |
 | `-port` | `RSS_PORT` | `8080` | Server port |
 | `-debug-emails` | `RSS_DEBUG_EMAILS` | _(empty: debug mode off)_ | Accounts that may turn on debug mode, comma-separated (case doesn't matter); see "Debug mode" in [docs/features.md](docs/features.md) |
+| `-newsletter-domain` | `RSS_NEWSLETTER_DOMAIN` | _(empty: newsletters off)_ | The domain of readers' newsletter addresses, like `in.paperround.app` (use `in.localhost` in development); account emails there are refused. See "Newsletters" in [docs/features.md](docs/features.md) |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the app that append to `X-Forwarded-For` (0–3; 0 ignores the header). The client IP is the entry this many places from the right. Only safe when those proxies are the only way to reach the app |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `25` | PostgreSQL max open connections |
@@ -135,6 +136,7 @@ It prints a QR code and the `otpauth://` URI it holds; add it to an authenticato
 | `-render-api-key` | `RSS_RENDER_API_KEY` | _(none)_ | A Render API key, with which the service page reads `www`'s CPU, memory and deploys; unset, or without `-render-service-id`, the page says they're not configured |
 | `-render-service-id` | `RSS_RENDER_SERVICE_ID` | _(none)_ | `www`'s Render service ID (`srv-…`), whose figures the service page reads with `-render-api-key` |
 | `-support-email` | `RSS_SUPPORT_EMAIL` | _(none)_ | Where people can get help, shown in the footers of invites and account emails, as for `www` |
+| `-newsletter-domain` | `RSS_NEWSLETTER_DOMAIN` | _(empty: no check)_ | The domain of readers' newsletter addresses, as for `www`; invites to an address there are refused |
 | `-mail-daily-limit` | `RSS_MAIL_DAILY_LIMIT` | `100` | The email provider's daily sending limit, which waves of invites are checked against |
 | `-mail-monthly-limit` | `RSS_MAIL_MONTHLY_LIMIT` | `3000` | The email provider's monthly sending limit |
 | `-mail-reserve` | `RSS_MAIL_RESERVE` | `10` | Emails a day and a month that invites leave for account emails, like password resets (less than the daily limit) |

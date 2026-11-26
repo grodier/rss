@@ -123,6 +123,16 @@ func TestParseConfig(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "newsletter domain",
+			env:  map[string]string{"RSS_DB_DSN": dsn, "RSS_NEWSLETTER_DOMAIN": "in.localhost"},
+			check: func(t *testing.T, cfg config) {
+				if cfg.newsletterDomain != "in.localhost" {
+					t.Errorf("newsletterDomain = %q, want in.localhost", cfg.newsletterDomain)
+				}
+			},
+		},
+		{name: "invalid newsletter domain", args: []string{"-newsletter-domain", "x@In.example.com"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid newsletter domain "x@In.example.com"`},
 		{name: "no dsn", wantErr: "database DSN must not be empty"},
 		{name: "invalid env variable", env: map[string]string{"RSS_DB_DSN": dsn, "RSS_PORT": "abc"}, wantErr: `invalid value "abc" for RSS_PORT`},
 		{name: "invalid environment", args: []string{"-env", "staging"}, env: map[string]string{"RSS_DB_DSN": dsn}, wantErr: `invalid environment "staging"`},

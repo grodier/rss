@@ -23,6 +23,10 @@ locals {
     RSS_MAIL_FROM     = { value = "rss <hello@paperround.app>" }
     RSS_SUPPORT_EMAIL = { value = "rss-support@georgerodier.com" }
   }
+
+  # The domain of readers' newsletter addresses (#827): www gives readers
+  # addresses there, and both services refuse it as an account's email.
+  newsletter_domain = "in.paperround.app"
 }
 
 resource "render_web_service" "rss" {
@@ -65,6 +69,8 @@ resource "render_web_service" "rss" {
     # Email (see "Domain and email" in infra/README.md); the rest of the mail
     # settings are in local.mail_env_vars.
     RSS_BASE_URL = { value = "https://paperround.app" }
+    # Readers' newsletter addresses (see local.newsletter_domain).
+    RSS_NEWSLETTER_DOMAIN = { value = local.newsletter_domain }
   })
 
   lifecycle {
@@ -133,6 +139,8 @@ resource "render_web_service" "admin" {
     # rss's ID, whose CPU, memory and deploys the service page reads from
     # Render's API with RSS_RENDER_API_KEY.
     RSS_RENDER_SERVICE_ID = { value = render_web_service.rss.id }
+    # The invite form refuses addresses at the newsletter domain.
+    RSS_NEWSLETTER_DOMAIN = { value = local.newsletter_domain }
   })
 
   lifecycle {

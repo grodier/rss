@@ -54,6 +54,17 @@
             {{template "icon-chevron"}}
           </a>
         </li>
+        {{if .Newsletters}}
+        <li>
+          <a class="settings-row" href="/settings/newsletters">
+            <span class="settings-stack">
+              <span class="settings-label">Newsletters</span>
+              <span class="hint settings-email">{{or .NewsletterAddress "Get your address"}}</span>
+            </span>
+            {{template "icon-chevron"}}
+          </a>
+        </li>
+        {{end}}
         <li>
           <a class="settings-row" href="/settings/data">
             <span class="settings-stack">

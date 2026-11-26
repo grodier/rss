@@ -15,6 +15,7 @@ import (
 
 	"github.com/grodier/rss/internal/admin"
 	"github.com/grodier/rss/internal/cli"
+	"github.com/grodier/rss/internal/validator"
 )
 
 type config struct {
@@ -30,6 +31,9 @@ type config struct {
 	// footers.
 	appURL       string
 	supportEmail string
+	// newsletterDomain is the domain of readers' newsletter addresses; the
+	// invite form refuses addresses there. "" turns the check off.
+	newsletterDomain string
 	// appInternalURL is www's URL on the private network, without a
 	// trailing slash, whose /healthcheck the pinger checks; "" runs no
 	// checks.
@@ -114,6 +118,9 @@ func (c config) Validate() error {
 	if c.renderServiceID != "" && !renderServiceID.MatchString(c.renderServiceID) {
 		errs = append(errs, fmt.Errorf("invalid Render service ID %q: must be srv- and lowercase letters or digits", c.renderServiceID))
 	}
+	if c.newsletterDomain != "" && !validator.Matches(c.newsletterDomain, validator.DomainRX) {
+		errs = append(errs, fmt.Errorf("invalid newsletter domain %q: must be a lowercase host name, like in.paperround.app", c.newsletterDomain))
+	}
 	if c.supportEmail != "" {
 		if _, err := netmail.ParseAddress(c.supportEmail); err != nil {
 			errs = append(errs, fmt.Errorf("invalid support email %q: %v", c.supportEmail, err))
@@ -159,6 +166,7 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.StringVar(&cfg.renderAPIKey, "render-api-key", "", "A Render API key, to read www's CPU, memory and deploys (empty: not shown)")
 	fs.StringVar(&cfg.renderServiceID, "render-service-id", "", "www's Render service ID (srv-…), whose CPU, memory and deploys the service page shows")
 	fs.StringVar(&cfg.supportEmail, "support-email", cfg.supportEmail, "Where people can get help, shown in the footers of invites and account emails")
+	fs.StringVar(&cfg.newsletterDomain, "newsletter-domain", "", "Domain of readers' newsletter addresses, like in.paperround.app; invites refuse addresses there (default: no check)")
 	fs.IntVar(&cfg.mailLimits.Daily, "mail-daily-limit", cfg.mailLimits.Daily, "The email provider's daily sending limit, which invites are checked against")
 	fs.IntVar(&cfg.mailLimits.Monthly, "mail-monthly-limit", cfg.mailLimits.Monthly, "The email provider's monthly sending limit")
 	fs.IntVar(&cfg.mailLimits.Reserve, "mail-reserve", cfg.mailLimits.Reserve, "Emails a day and a month that invites leave for account emails, like password resets")

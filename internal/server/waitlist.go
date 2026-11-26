@@ -147,6 +147,7 @@ func (s *Server) waitlistJoinHandler(w http.ResponseWriter, r *http.Request) {
 	form.Source = waitlistSource(form.Source)
 	form.CheckField(validator.NotBlank(form.Email), "email", "Email is required")
 	form.CheckField(validator.Matches(form.Email, validator.EmailRX), "email", "Email must be a valid email address")
+	form.CheckNotNewsletterAddress("email", form.Email, s.config.NewsletterDomain)
 	form.CheckName(form.Name)
 	form.CheckField(validator.MaxChars(form.Sites, 500), "sites", "Keep this under 500 characters")
 	if !form.Valid() {

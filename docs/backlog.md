@@ -164,8 +164,32 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 - [ ] **Name → website suggestions.**
   For free-text queries ("the verge"), suggest likely websites ("Try theverge.com?") the user can click to look up.
   Don't fetch them automatically.
-- [ ] **Platform-specific discovery rules.**
-  Beyond #725's site keys for shared hosts: Medium publications (`medium.com/<publication>`, which share the first path segment with Medium's own pages), host aliases that should key as their main host (`m.youtube.com`, `old.reddit.com`), other platforms that share a host under a path, and finding a platform's feed when its page doesn't advertise one.
+- [ ] **Fediverse handles through WebFinger.**
+  #853 turns `@name@host` into `https://host/@name`, Mastodon's profile address, which other fediverse software doesn't always use; WebFinger (`/.well-known/webfinger?resource=acct:name@host`) gives the profile's real address.
+  When readers' lookups of handles fail on servers that aren't Mastodon.
+- [ ] **Fediverse software on any host: Lemmy, PeerTube, Forgejo and Gitea.**
+  Their sites are paths on hosts of their own (a Lemmy community is `/c/name`, with its feed at `/feeds/c/name.xml`, checked on lemmy.world while planning #860; PeerTube has `/a/` and `/c/`; Forgejo and Gitea have GitHub's shape), so they'd key as one site per server.
+  A path rule on every host would misfire (`/c/` is common on ordinary sites), so this needs a way to recognize the software first, such as NodeInfo (`/.well-known/nodeinfo`), and a key that can depend on it, which `SiteKey` (computed from the address alone) can't.
+- [ ] **GitLab projects.**
+  Subgroups make a project's path any depth (`gitlab.com/group/sub/project`), and its pages put `/-/` before their own paths; feeds include `/-/tags?format=atom` (checked while planning #860).
+- [ ] **More Medium addresses: tags, `/p/<id>` links and `<name>.medium.com`.**
+  Medium publishes tag feeds (`medium.com/feed/tag/<tag>`, 200 while planning #860), which could be Medium's own sites; `/p/<id>` short links redirect to a post (but answered servers 403 while planning); and an author can also be at `<name>.medium.com` (whose `/feed` answered 200), a separate site from `medium.com/@name` today.
+  Check whether the two are always the same before keying one as the other.
+- [ ] **Substack profiles.**
+  `substack.com/@name` keys by the generic `@name` rule but lists no feed; the person's writing is on their publications (`<pub>.substack.com`, an ordinary site), which the profile page names.
+  A rule like #852's could look up the publication instead.
+- [ ] **Vimeo's channels and videos, and DEV's tags.**
+  #856 covers Vimeo users and DEV authors only: `vimeo.com/channels/<name>` has its own feed (`/channels/<name>/videos/rss`), a video (`vimeo.com/<digits>`) could resolve to its user through Vimeo's oEmbed as #852 does for YouTube, and DEV publishes tag feeds (`/feed/tag/<tag>`).
+- [ ] **Reddit from servers.**
+  While planning #860, from a cloud server, `www.reddit.com/r/golang/.rss` answered 404 and `old.reddit.com/r/golang/.rss` redirected to a login page; Reddit's HTML page answered with a bot page.
+  If production confirms it (failed fetches of Reddit feeds on the admin's feeds pages), either follow subreddits through Reddit's API (an OAuth app, with its terms and rate limits) or say so, as #854 does for platforms without feeds.
+  Once fetching works: Reddit's items wrap every post in "submitted by /u/x [link] [comments]", which could become the linked article and a Comments link in the row's foot, and a subreddit's icon is in its `about.json`.
+- [ ] **Icons for sites whose page refuses servers.**
+  The icon worker (`siteicon.pictures`) reads the page's `og:image` and the feeds the page declares, so a site whose page answers 403 (Medium authors and publications, Letterboxd, from servers) gets no picture even when its feed has an `<image>`; fall back to the stored feeds' images.
+  From #860.
+- [ ] **"Also on": a person's other sites.**
+  A site's home page often links its owner's other profiles with `rel="me"` (their YouTube channel, Mastodon account, newsletter), which a site page could offer to follow; Mastodon profiles verify such links.
+  Worth it once readers follow people across platforms.
 - [ ] **Add a feed by its address on a site's page.**
   A field by "Missing a feed?" on the site page, for a feed the site's home page doesn't link to, offered whatever the last lookup's age; today the reader pastes its address into Discover, whose Look up adds it to the site.
   Needs a design checkpoint; worth it if readers don't find Discover's route.
@@ -188,7 +212,7 @@ Each with when it pays off:
   When dead feeds are a noticeable share of fetches.
 - [ ] **Per-host politeness.**
   At most N concurrent fetches per host.
-  When one host has many feeds (category feeds, platform hosts like Substack or Medium).
+  When one host has many feeds (category feeds, platform hosts like Substack or Medium), or an import sends many to one host (a YouTube subscriptions import, #858).
 - [ ] **Separate worker process or `-once` mode.**
   Run the background workers in their own process when fetching measurably slows web requests or should scale separately from web instances.
   On Render, that's the same image as a background worker service with the web service's workers set to 0 (`RSS_LOOKUP_WORKERS=0`, `RSS_REFRESH_WORKERS=0`), for about $7 more a month; a `cmd/worker` or `-role` flag is the alternative.
@@ -202,9 +226,6 @@ Each with when it pays off:
   Before launch, weigh deleting against keeping: storage and backup cost and the "Articles grow without bound" watchlist entry on one side; the value of a long article archive (search, history, business uses of the data) and its copyright and privacy implications on the other.
   Saved articles (#299) must survive whatever rule is chosen: deleting an article cascades to its `saves` rows.
   For scale: #388's seed takes about 1 KB per article on disk with `content` empty, so real full-text articles take several times that.
-- [ ] **Titles and summaries from `media:group`.**
-  YouTube entries have no `summary`; their text is in `media:group/media:description` (and `media:title`), which `Parse` doesn't read, so their excerpt stays empty and each one gets an enrichment job.
-  Read them as fallbacks when enrichment fetches of video pages become a noticeable share.
 - [ ] **Image `media:content` in Atom and in `media:group`.**
   `itemImage` reads thumbnails at the top level and in a `media:group` (#334), but an image `media:content` only at an RSS item's top level, through gofeed's RSS translator (its Atom translator reads none).
   Reading them in both formats, grouped or not, would cover Media RSS feeds that declare no thumbnail.
@@ -342,6 +363,9 @@ Each with when it pays off:
   Spotify, SoundCloud and Bandcamp players as click-to-play previews, like YouTube and Vimeo (#296).
 - [ ] **Embedded social posts.**
   Mastodon's embeds, as the post card X's (#698) and Bluesky's (#699) have, without loading their scripts.
+- [ ] **Hide a YouTube channel's Shorts and premieres.**
+  A channel's feed lists its Shorts (their links are `/shorts/ID`) and scheduled premieres alongside its videos; a per-subscription choice could leave them out of the timeline.
+  Needs a design checkpoint (where the choice lives) and a subscription setting; worth it when readers follow channels that post many Shorts.
 - [ ] **Bluesky posts' pictures.**
   Bluesky's embed markup replaces pictures, videos and link cards with "[image or embed]".
   Its public API (`public.api.bsky.app`, `app.bsky.feed.getPosts`, no key needed) returns them, so a background runner like enrichment could fetch each embedded post once, through `internal/fetch`, and the card could show its picture.
@@ -703,6 +727,11 @@ Background refresh:
   When `SiteKeyRulesVersion` changes, `www migrate` computes the key of every feed whose site's key has no path (most feeds) in Go, in one transaction during the pre-deploy, which holds the deploy and its locks.
   *Signal:* the pre-deploy's re-key log line, or the deploy, takes over a few seconds.
   *Fix:* read only feeds whose site is a bare host the rules can split (a host with a rule, or a `site_url` with `/@`), in batches with a transaction each.
+  #850, #851 and #856 each bump the version, so each of their deploys runs it, and #851 also reads the feeds of alias hosts' sites.
+- [ ] **A request to YouTube inside `POST /lookups`** (#852).
+  Looking up a video's address asks YouTube's oEmbed endpoint for its channel before the lookup is keyed, inside the request, for up to 2 seconds.
+  *Signal:* `POST /lookups` latency rising in the request metrics, or oEmbed failures (429s) in the logs as lookups of videos grow.
+  *Fix:* key such lookups by the video's address and resolve the channel in the lookup worker, or cache video → channel answers.
 - [ ] **One statement per article in `saveArticles`.**
   Each fetched item is a separate upsert inside the `SaveFetch` transaction, and inside `DiscoveryRepository.Save` for lookups and imports.
   #448 measured about 1 ms per article locally: about 190 ms of a 200-item feed's first save, most of an imported feed's own time.
@@ -744,6 +773,10 @@ Other background work (#302, #304, #306):
   *Signal:* imports reported slow, or pending `import_feeds` rows waiting long behind another user's import.
   *Fix:* round-robin between imports (claim the lowest position across imports, oldest import first), or a per-import worker cap.
   #448 left it for when production shows overlapping imports.
+- [ ] **Platform imports send hundreds of fetches to one host** (#858).
+  A YouTube subscriptions file can list hundreds of channels, and the six import workers fetch their feeds from youtube.com back to back, from one server address; YouTube answered a server's watch-page request with a captcha while planning.
+  *Signal:* an import's failures on youtube.com (429s, or redirects to `google.com/sorry`) in its results or the import logs.
+  *Fix:* per-host politeness (the backlog's "Per-host politeness"), or spreading one import's same-host feeds over time.
 - [ ] **Six import workers** (#448).
   A large import of unknown feeds runs six fetches, parses and saves at once, alongside page requests, on a Starter instance (512 MB, a fraction of a CPU) and production's 10 database connections; each worker can hold a body of up to 5 MiB and its parsed items.
   Locally, a 100-feed import with six workers and 10 connections never waited for a connection, and used about 12 MB more heap than with two.

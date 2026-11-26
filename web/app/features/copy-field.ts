@@ -3,12 +3,11 @@ import * as copied from "./copied";
 
 // Copy buttons beside read-only values (.copy-field): a shared timeline's
 // links, and a reader's newsletter address. Each button[data-copy] names its
-// input by id and is rendered
-// hidden, since it needs JavaScript; this shows it where the Clipboard API
-// works (it needs a secure context) and its input exists. On click it
-// copies the input's value and shows the outcome with copied.ts's
-// showCopied, announced in the page's polite live region, named by the
-// input's label ("Feed link copied"). When the copy fails, the input is
+// input by id and is rendered hidden, since it needs JavaScript; this shows
+// it where the Clipboard API works (it needs a secure context) and its input
+// exists. On click it copies the input's value and shows the outcome with
+// copied.ts's showCopied, announced in the page's polite live region, named
+// by the input's label ("Feed link copied"). When the copy fails, the input is
 // focused with its text selected, so the reader can copy it themselves, and
 // the announcement names what it is by the button's data-copy-what ("your
 // address"; "the link" without one). Nothing about copying is recorded.

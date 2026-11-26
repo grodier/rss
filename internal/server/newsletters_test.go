@@ -225,6 +225,15 @@ func TestSettingsNewsletterAddress(t *testing.T) {
 		}
 	})
 
+	t.Run("a new address without one to replace", func(t *testing.T) {
+		store := &fakeNewsletterStore{}
+		rr, flash := postNewsletterAddress(t, newsletterServer(t, store), url.Values{"new": {"true"}})
+		assertRedirect(t, rr, "/settings/newsletters")
+		if len(store.made) != 1 || flash != "" {
+			t.Errorf("made %v with flash %q, want one and no flash about an old address", store.made, flash)
+		}
+	})
+
 	t.Run("a second new address within a day", func(t *testing.T) {
 		store := &fakeNewsletterStore{currentFn: addressOf("sam.k7x2m9"), newFn: func(context.Context, string, string) (rss.NewsletterAddress, error) {
 			return rss.NewsletterAddress{}, rss.ErrAddressTooRecent

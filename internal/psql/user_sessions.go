@@ -49,8 +49,8 @@ func (r *UserSessionRepository) Create(ctx context.Context, userID string, idleB
 // Get returns the session with its user. rss.ErrNoRecord if there's no
 // session with id.
 func (r *UserSessionRepository) Get(ctx context.Context, id string) (rss.Session, error) {
-	// The user's features come along in the same query: My feeds and
-	// Settings read them on every view.
+	// The user's features come along in the same query, since Settings
+	// and the newsletter routes read them on every request.
 	stmt := `SELECT s.id, s.last_seen_at, u.id, u.name, u.email, u.email_confirmed_at, u.theme, u.layout, u.created_at,
 			ARRAY(SELECT f.feature FROM user_features f WHERE f.user_id = u.id ORDER BY f.feature)
 		FROM user_sessions s JOIN users u ON u.id = s.user_id

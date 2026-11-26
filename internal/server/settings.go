@@ -36,7 +36,7 @@ func (s *Server) settingsHandler(w http.ResponseWriter, r *http.Request) {
 		Flash:         s.sessionManager.PopString(r.Context(), "flash"),
 		ConfirmNotice: s.confirmNotice(r),
 		DebugAllowed:  s.debugAllowed(r),
-		Newsletters:   s.newslettersOn(r),
+		Newsletters:   s.hasFeature(r, rss.FeatureNewsletters),
 	}
 	if data.Newsletters {
 		a, err := s.services.NewsletterService.CurrentAddress(r.Context(), nav.User.ID)

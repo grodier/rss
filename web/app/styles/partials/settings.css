@@ -134,12 +134,9 @@
      multiplication sign, which would misspell addresses like
      sam.k7x2m9@…; addresses are read letter by letter, so they go without. */
   .settings-email {
-    font-variant-ligatures: no-contextual;
-  }
-
-  .settings-email {
     min-inline-size: 0;
     overflow-wrap: anywhere;
+    font-variant-ligatures: no-contextual;
   }
 
   /* The Settings home's first row: the account, shown as its owner. */
@@ -372,7 +369,6 @@
   /* The address as text that selects whole on focus (copy-field.ts), not a
      field to type in. It's as wide as the address (size, and field-sizing
      where it's supported), so Copy follows it. */
-  .address-text,
   .copy-field > .address-text {
     flex: 0 1 auto;
     inline-size: auto;

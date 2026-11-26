@@ -25,112 +25,44 @@
       <div class="error" role="alert">{{.}}</div>
       {{end}}
 
-      {{/* DESIGN CHECKPOINT ONLY: three options, picked by ?option=; the
-           approved one stays and the others go before review. */}}
-      {{$back := printf "/settings/newsletters?option=%s" .Option}}
-
-      {{if eq .Option "b"}}
-      {{/* (b) The address under the page head, as the page's subject. */}}
+      {{/* Settings rows (#827): the address is a row like the account's
+           email, its Copy right after it; replacing it is a row with its
+           button. Copy is hidden until copy-field.ts shows it. */}}
       {{if .Address}}
-      <section class="newsletter-hero">
-        <div class="newsletter-hero-address copy-field">
-          <label class="visually-hidden" for="newsletter-address">Your address</label>
-          <input class="address-text" type="text" id="newsletter-address" value="{{.Address}}" readonly spellcheck="false" />
-          <button class="row-icon-btn copy-button" type="button" data-copy="newsletter-address" title="Copy" hidden>{{template "icon-copy"}}{{template "icon-check"}}<span class="visually-hidden">Copy your address</span><span class="copied-label" aria-hidden="true"></span></button>
-        </div>
-        <p class="hint">Sign up to newsletters with this address, or forward them to it. Each newsletter becomes a feed you follow.</p>
-      </section>
-      <form class="newsletter-foot" action="/settings/newsletters/address" method="post">
-        <input type="hidden" name="new" value="true" />
-        <input type="hidden" name="return_to" value="{{$back}}" />
-        <button class="btn-sm" type="submit">Get a new address</button>
-        <p class="hint">For an address that gets spam. The old one keeps working for 30 days.</p>
-      </form>
-      {{else}}
-      <section class="newsletter-hero">
-        <p class="newsletter-hero-lead">Read newsletters with your feeds.</p>
-        <p class="hint">Get an address to sign up to newsletters with, and each one becomes a feed you follow. Your own email address stays private.</p>
-        <form action="/settings/newsletters/address" method="post">
-          <input type="hidden" name="return_to" value="{{$back}}" />
-          <button class="btn-primary" type="submit">Get your address</button>
-        </form>
-      </section>
-      {{end}}
-
-      {{else if eq .Option "c"}}
-      {{/* (c) The share page's copy field, and Home's empty state. */}}
-      {{if .Address}}
-      <div class="settings-form">
-        <p class="form-intro">Sign up to newsletters with this address, or forward them to it. Each newsletter becomes a feed you follow.</p>
-        <div class="field">
-          <label for="newsletter-address">Your address</label>
-          <div class="copy-field">
-            <input type="text" id="newsletter-address" value="{{.Address}}" readonly spellcheck="false" />
-            <button class="btn-sm copy-button" type="button" data-copy="newsletter-address" hidden>{{template "icon-copy"}}{{template "icon-check"}}Copy<span class="visually-hidden"> your address</span><span class="copied-label" aria-hidden="true"></span></button>
-          </div>
-        </div>
-      </div>
+      <p class="settings-intro">Sign up to newsletters with your address, or forward them to it. Each newsletter becomes a feed you follow.</p>
       <ul class="settings-list" role="list">
+        <li class="settings-row newsletter-address-row">
+          <span class="settings-stack">
+            <label class="settings-label" for="newsletter-address">Your address</label>
+            <span class="copy-field">
+              <input class="address-text" type="text" id="newsletter-address" value="{{.Address}}" size="{{len .Address}}" readonly spellcheck="false" />
+              <button class="row-icon-btn copy-button" type="button" data-copy="newsletter-address" data-copy-what="your address" title="Copy" hidden>{{template "icon-copy"}}{{template "icon-check"}}<span class="visually-hidden">Copy your address</span><span class="copied-label" aria-hidden="true"></span></button>
+            </span>
+          </span>
+        </li>
         <li class="settings-action">
           <span class="settings-stack">
             <span class="settings-label">Replace your address</span>
-            <span class="hint">For an address that gets spam. The old one keeps working for 30 days.</span>
+            <span class="hint">If spam starts reaching it. The old one keeps working for 30 days, so you can move your newsletters over.</span>
           </span>
           <form action="/settings/newsletters/address" method="post">
             <input type="hidden" name="new" value="true" />
-            <input type="hidden" name="return_to" value="{{$back}}" />
             <button class="btn-sm" type="submit">Get a new address</button>
           </form>
         </li>
       </ul>
       {{else}}
-      <div class="empty empty-state">
-        {{template "icon-mail"}}
-        <p class="empty-state-lead">Read newsletters with your feeds</p>
-        <p>Sign up with your Paper Round address, and each newsletter becomes a feed in your timeline. Your own email address stays private.</p>
-        <form class="empty-state-actions" action="/settings/newsletters/address" method="post">
-          <input type="hidden" name="return_to" value="{{$back}}" />
-          <button class="btn-primary" type="submit">Get your address</button>
-        </form>
-      </div>
-      {{end}}
-
-      {{else}}
-      {{/* (a) Settings rows: the address is a row like the account's
-           email, with an icon-only Copy at its end. */}}
-      <p class="settings-intro">Sign up to newsletters with your address, or forward them to it. Each newsletter becomes a feed you follow.</p>
+      <p class="settings-intro">Get an address to sign up to newsletters with, or to forward them to. Each newsletter becomes a feed you follow, and your own email address stays private.</p>
       <ul class="settings-list" role="list">
-        {{if .Address}}
-        <li class="settings-row newsletter-address-row">
-          <span class="settings-stack copy-field">
-            <label class="settings-label" for="newsletter-address">Your address</label>
-            <input class="address-text" type="text" id="newsletter-address" value="{{.Address}}" readonly spellcheck="false" />
-          </span>
-          <button class="row-icon-btn copy-button" type="button" data-copy="newsletter-address" title="Copy" hidden>{{template "icon-copy"}}{{template "icon-check"}}<span class="visually-hidden">Copy your address</span><span class="copied-label" aria-hidden="true"></span></button>
-        </li>
-        <li class="settings-action">
-          <span class="settings-stack">
-            <span class="settings-label">Replace your address</span>
-            <span class="hint">For an address that gets spam. The old one keeps working for 30 days.</span>
-          </span>
-          <form action="/settings/newsletters/address" method="post">
-            <input type="hidden" name="new" value="true" />
-            <input type="hidden" name="return_to" value="{{$back}}" />
-            <button class="btn-sm" type="submit">Get a new address</button>
-          </form>
-        </li>
-        {{else}}
         <li class="settings-action">
           <span class="settings-stack">
             <span class="settings-label">Your address</span>
-            <span class="hint">Your own email address stays private.</span>
+            <span class="hint">None yet</span>
           </span>
           <form action="/settings/newsletters/address" method="post">
-            <input type="hidden" name="return_to" value="{{$back}}" />
             <button class="btn-primary" type="submit">Get your address</button>
           </form>
         </li>
-        {{end}}
       </ul>
       {{end}}
     </main>

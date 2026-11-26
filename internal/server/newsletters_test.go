@@ -134,7 +134,7 @@ func TestSettingsNewslettersPage(t *testing.T) {
 			t.Fatalf("status = %d", rr.Code)
 		}
 		body := rr.Body.String()
-		assertBodyContains(t, body, `<h1>Newsletters</h1>`, `action="/settings/newsletters/address"`, "Get your address")
+		assertBodyContains(t, body, `<h1>Newsletters</h1>`, `action="/settings/newsletters/address"`, "Get your address", "None yet")
 		if strings.Contains(body, "@in.localhost") || strings.Contains(body, `name="new"`) {
 			t.Error("the page shows an address, or Get a new address, before there is one")
 		}
@@ -143,10 +143,10 @@ func TestSettingsNewslettersPage(t *testing.T) {
 		s := newsletterServer(t, &fakeNewsletterStore{currentFn: addressOf("sam.k7x2m9")})
 		rr, _ := serveNewsletters(t, s, s.settingsNewslettersHandler, httptest.NewRequest(http.MethodGet, "/settings/newsletters", nil), newsletterSession)
 		assertBodyContains(t, rr.Body.String(),
-			`value="sam.k7x2m9@in.localhost" readonly`,
-			`data-copy="newsletter-address"`,
+			`value="sam.k7x2m9@in.localhost" size="23" readonly`,
+			`data-copy="newsletter-address" data-copy-what="your address"`,
 			`<input type="hidden" name="new" value="true" />`,
-			"The old one keeps working for 30 days.",
+			"The old one keeps working for 30 days,",
 		)
 	})
 }

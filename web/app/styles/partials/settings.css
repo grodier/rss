@@ -356,78 +356,51 @@
     color: var(--text-2);
   }
 
+  /* The address as a row's value: its label as tight above it as a hint,
+     the address in the text's color, and Copy right after it. */
+  .newsletter-address-row label {
+    margin: 0;
+    font-size: inherit;
+  }
+
+  .newsletter-address-row .copy-field {
+    align-items: center;
+    gap: 0.25rem;
+    margin-block-start: 0.125rem;
+  }
+
   /* The address as text that selects whole on focus (copy-field.ts), not a
-     field to type in. */
-  .address-text {
-    inline-size: 100%;
+     field to type in. It's as wide as the address (size, and field-sizing
+     where it's supported), so Copy follows it. */
+  .address-text,
+  .copy-field > .address-text {
+    flex: 0 1 auto;
+    inline-size: auto;
+    max-inline-size: 100%;
     min-inline-size: 0;
     padding: 0;
     border: 0;
+    border-radius: var(--radius-sm);
     background: none;
     color: var(--text);
     font: inherit;
     /* After font, which resets it; see .settings-email. */
     font-variant-ligatures: no-contextual;
     text-overflow: ellipsis;
+    field-sizing: content;
+  }
+
+  .address-text:focus {
+    box-shadow: none;
   }
 
   .address-text:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
-  }
-
-  .newsletter-address-row .address-text {
-    margin-block-start: 0.125rem;
-    color: var(--text-2);
-  }
-
-  .newsletter-address-row {
-    padding-block: 0.625rem;
   }
 
   .newsletter-address-row .copy-button {
     flex: none;
-  }
-
-  /* (b) The address as the page's subject, under its head. */
-  .newsletter-hero {
-    display: grid;
-    gap: 0.75rem;
-    padding: 1.25rem 1rem 1.5rem;
-  }
-
-  .newsletter-hero-address {
-    align-items: center;
-  }
-
-  .newsletter-hero-address .address-text {
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-
-  .newsletter-hero-lead {
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 700;
-  }
-
-  .newsletter-hero form {
-    justify-self: start;
-  }
-
-  .newsletter-foot {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
-    padding: 1rem;
-    border-block-start: 1px solid var(--border);
-  }
-
-  .newsletter-foot .hint {
-    flex: 1 1 14rem;
+    margin-block: -0.5rem;
   }
 }

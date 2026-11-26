@@ -88,6 +88,17 @@ describe("copy-field", () => {
     expect(liveRegion()).toBe("Couldn't copy the link. It's selected, so you can copy it.");
   });
 
+  it("names what it couldn't copy by data-copy-what", async () => {
+    vi.useFakeTimers();
+    clipboard(async () => Promise.reject(new DOMException("denied", "NotAllowedError")));
+    await start();
+    const page = button("share-page-url");
+    page.dataset.copyWhat = "your address";
+    page.click();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(liveRegion()).toBe("Couldn't copy your address. It's selected, so you can copy it.");
+  });
+
   it("does nothing for a button naming a missing input", async () => {
     vi.useFakeTimers();
     const writeText = vi.fn(async (_: string) => {});

@@ -1,15 +1,17 @@
 import { announce } from "../../shared/lib/announce";
 import * as copied from "./copied";
 
-// Copy buttons beside read-only links (.copy-field), on a shared timeline's
-// page. Each button[data-copy] names its input by id and is rendered
+// Copy buttons beside read-only values (.copy-field): a shared timeline's
+// links, and a reader's newsletter address. Each button[data-copy] names its
+// input by id and is rendered
 // hidden, since it needs JavaScript; this shows it where the Clipboard API
 // works (it needs a secure context) and its input exists. On click it
 // copies the input's value and shows the outcome with copied.ts's
 // showCopied, announced in the page's polite live region, named by the
 // input's label ("Feed link copied"). When the copy fails, the input is
-// focused with its text selected, so the reader can copy it themselves.
-// Nothing about copying is recorded.
+// focused with its text selected, so the reader can copy it themselves, and
+// the announcement names what it is by the button's data-copy-what ("your
+// address"; "the link" without one). Nothing about copying is recorded.
 //
 // With or without the buttons, a .copy-field's read-only input selects its
 // whole value when it takes focus, by keyboard or by a press; a press that
@@ -35,7 +37,8 @@ export function init(): void {
         input.focus();
         input.select();
         copied.showCopied(button, false, done);
-        announce("Couldn't copy the link. It's selected, so you can copy it.");
+        const what = button.dataset.copyWhat || "the link";
+        announce(`Couldn't copy ${what}. It's selected, so you can copy it.`);
         return;
       }
       copied.showCopied(button, true, done);

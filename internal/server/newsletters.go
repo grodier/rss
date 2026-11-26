@@ -111,9 +111,6 @@ type newsletterPage struct {
 	Address string
 	// Error is a refusal of Get a new address.
 	Error string
-	// Option is the design checkpoint's option (a, b or c), from ?option=.
-	// DESIGN CHECKPOINT ONLY: it goes with the options not picked.
-	Option string
 }
 
 // settingsNewslettersHandler shows Settings › Newsletters: the reader's
@@ -128,12 +125,6 @@ func (s *Server) renderSettingsNewsletters(w http.ResponseWriter, r *http.Reques
 		Nav:   nav,
 		Flash: s.sessionManager.PopString(r.Context(), "flash"),
 		Error: errMsg,
-	}
-	switch o := r.URL.Query().Get("option"); o {
-	case "b", "c":
-		data.Option = o
-	default:
-		data.Option = "a"
 	}
 	a, err := s.services.NewsletterService.CurrentAddress(r.Context(), nav.User.ID)
 	switch {

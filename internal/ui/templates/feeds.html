@@ -36,23 +36,26 @@
       <div class="flash">{{.}}</div>
       {{end}}
 
-      {{if .Total}}
+      {{/* The list's tools, after the kind that chooses what it lists: the
+           search that narrows it, then the sort that orders it, on one line
+           where they fit (feeds.css). */}}
       {{if .Count}}
-      <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
-        {{template "search-box" .Box}}
-        {{with .Kind}}<input type="hidden" name="kind" value="{{.}}" />{{end}}
-        {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
-      </form>
-      {{end}}
-      {{if gt .Count 1}}
-      <nav class="feeds-sort" aria-labelledby="feeds-sort-label">
-        <span id="feeds-sort-label">Sort by</span>
-        <ul class="segmented" role="list">
-          <li><a href="{{.ByName}}"{{if not .Sort}} aria-current="page"{{end}} data-sort-link>Name</a></li>
-          <li><a href="{{.ByUpdated}}"{{if .Sort}} aria-current="page"{{end}} data-sort-link>Recently updated</a></li>
-        </ul>
-      </nav>
-      {{end}}
+      <div class="feeds-tools">
+        <form class="page-search" role="search" method="get" action="/feeds" data-feeds-filter>
+          {{template "search-box" .Box}}
+          {{with .Kind}}<input type="hidden" name="kind" value="{{.}}" />{{end}}
+          {{with .Sort}}<input type="hidden" name="sort" value="{{.}}" />{{end}}
+        </form>
+        {{if gt .Count 1}}
+        <nav class="feeds-sort" aria-labelledby="feeds-sort-label">
+          <span id="feeds-sort-label">Sort by</span>
+          <ul class="segmented" role="list">
+            <li><a href="{{.ByName}}"{{if not .Sort}} aria-current="page"{{end}} data-sort-link>Name</a></li>
+            <li><a href="{{.ByUpdated}}"{{if .Sort}} aria-current="page"{{end}} data-sort-link>Recently updated</a></li>
+          </ul>
+        </nav>
+        {{end}}
+      </div>
       {{end}}
 
       {{range .Sites}}

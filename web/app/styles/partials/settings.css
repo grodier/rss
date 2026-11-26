@@ -1,5 +1,6 @@
 /* Settings and the account pages' rows, the Reading form, tag checkboxes,
-   an import's progress and rows, and the segmented control. */
+   an import's progress and rows, the segmented control, and My feeds'
+   search and sort. */
 @layer components {
   /* A segmented control: two or three choices side by side in one
      outlined box, as a button group, a rule between them and the current
@@ -57,6 +58,34 @@
   .segmented a:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -4px;
+  }
+
+  /* My feeds' tools: the search, then the sort at its end on one line,
+     as GitLab's lists put them, where the column leaves the search at
+     least 18rem; narrower, the sort wraps under the search. Here rather
+     than in feeds.css, which the reading pages load for site pages' feed
+     rows, since only My feeds has them. */
+  .feeds-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .feeds-tools .page-search {
+    flex: 1 1 18rem;
+    padding: 0;
+  }
+
+  /* The sort: its label, then the choices as a segmented control. */
+  .feeds-sort {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    color: var(--text-2);
+    font-size: 0.875rem;
   }
 
   /* Settings: rows of a label, a value and, on links, a chevron. */

@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -139,14 +140,19 @@ func canonicalAddress(u *url.URL) {
 }
 
 // aliasHost rewrites u's host in place to its platform's main host when it
-// is an alias, keeping the scheme, path and query, and reports whether it
-// was one.
+// is an alias, keeping the port, scheme, path and query, and reports whether
+// it was one.
 func aliasHost(u *url.URL) bool {
 	p, ok := aliasesByHost[keyHost(u)]
-	if ok {
+	if !ok {
+		return false
+	}
+	if port := u.Port(); port != "" {
+		u.Host = net.JoinHostPort(p.mainHost, port)
+	} else {
 		u.Host = p.mainHost
 	}
-	return ok
+	return true
 }
 
 // canonicalCopy is a copy of u rewritten by canonicalAddress.
@@ -401,19 +407,39 @@ var tumblrReserved = map[string]bool{
 	"tumblelog": true,
 }
 
-// tumblrAddress: /blog/…, /blog/view/blog/… -> https://blog.tumblr.com/,
-// when blog isn't one of Tumblr's own pages and is a valid host label.
+// tumblrAddress: a blog's page or one of its posts, /blog,
+// /blog/123/a-post, /blog/view/blog -> https://blog.tumblr.com/, when blog
+// isn't one of Tumblr's own pages and is a valid host label. Any other
+// address (a tag page, a feed) is left as it is, as its path has no known
+// equivalent on the blog's host.
 func tumblrAddress(_ *url.URL, segs []string) *url.URL {
 	blog := strings.ToLower(seg(segs, 0))
-	if blog == "blog" && seg(segs, 1) == "view" {
-		blog = strings.ToLower(seg(segs, 2))
-	} else if tumblrReserved[blog] {
+	switch {
+	case blog == "blog" && seg(segs, 1) == "view" && len(segs) == 3:
+		blog = strings.ToLower(segs[2])
+	case tumblrReserved[blog]:
+		return nil
+	case len(segs) == 1, isDigits(seg(segs, 1)):
+	default:
 		return nil
 	}
 	if !validLabel(blog) {
 		return nil
 	}
 	return &url.URL{Scheme: "https", Host: blog + ".tumblr.com", Path: "/"}
+}
+
+// isDigits reports whether s is a non-empty run of ASCII digits.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range []byte(s) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Bluesky.

@@ -39,10 +39,13 @@ func SiteRoot(u *url.URL) *url.URL {
 }
 
 // IsHomePage reports whether u is its site's root (SiteRoot) with no query;
-// a trailing "/" doesn't matter. An alias host's address is read as its
-// platform's main address (canonicalAddress).
+// a trailing "/" doesn't matter. An alias host's address is read as its main
+// host's (aliasHost), but a Tumblr blog's address on tumblr.com isn't its
+// blog's home page: a post's would be too.
 func IsHomePage(u *url.URL) bool {
-	u = canonicalCopy(u)
+	c := *u
+	aliasHost(&c)
+	u = &c
 	if u.RawQuery != "" {
 		return false
 	}

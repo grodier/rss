@@ -40,6 +40,9 @@ func TestParseInput(t *testing.T) {
 		{"tumblr.com/blog", "https://tumblr.com/blog"},
 		{"tumblr.com/", "https://tumblr.com/"},
 		{"tumblr.com/bad_name", "https://tumblr.com/bad_name"},
+		{"tumblr.com/staff/tagged/news/rss", "https://tumblr.com/staff/tagged/news/rss"},
+		{"tumblr.com/blog/view/staff/123", "https://tumblr.com/blog/view/staff/123"},
+		{"https://old.reddit.com:8443/r/golang", "https://www.reddit.com:8443/r/golang"},
 		{"music.youtube.com/x", "https://music.youtube.com/x"},
 		{"staff.tumblr.com", "https://staff.tumblr.com/"},
 

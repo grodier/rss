@@ -71,6 +71,7 @@ func TestSiteKey(t *testing.T) {
 		{"https://tumblr.com/staff/123/a-post", "staff.tumblr.com"},
 		{"https://www.tumblr.com/blog/view/staff", "staff.tumblr.com"},
 		{"https://www.tumblr.com/explore", "tumblr.com"},
+		{"https://www.tumblr.com/staff/tagged/news", "tumblr.com"}, // not a blog's page or post
 		{"https://staff.tumblr.com/post/123", "staff.tumblr.com"},
 
 		// github.com
@@ -143,7 +144,9 @@ func TestIsHomePage(t *testing.T) {
 		{"https://m.youtube.com/@name", true},
 		{"https://old.reddit.com/r/golang/", true},
 		{"https://old.reddit.com/r/golang/comments/abc", false},
-		{"https://www.tumblr.com/staff", true},
+		// A blog's address on tumblr.com, post or not, isn't its home page.
+		{"https://www.tumblr.com/staff", false},
+		{"https://www.tumblr.com/staff/123/a-post", false},
 	}
 	for _, tt := range tests {
 		if got := IsHomePage(mustParse(t, tt.in)); got != tt.want {

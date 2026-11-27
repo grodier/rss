@@ -365,6 +365,78 @@ func TestNewsletterFeedAdmin(t *testing.T) {
 	}
 }
 
+func TestNewsletterSiteNotListed(t *testing.T) {
+	db := psqltest.NewDB(t)
+	newOwnedFeed(t, db, newTestUser(t, db))
+
+	t.Run("Discover's search", func(t *testing.T) {
+		for _, q := range []string{"news", "newsletter", rss.NewsletterSiteHost} {
+			sites, _, err := NewSearchRepository(db).Search(t.Context(), q, rss.NewsletterSiteHost, "", 100)
+			if err != nil {
+				t.Fatalf("Search(%q): %v", q, err)
+			}
+			for _, s := range sites {
+				if s.Site.Host == rss.NewsletterSiteHost {
+					t.Errorf("Search(%q) found the newsletters' site", q)
+				}
+			}
+		}
+	})
+
+	t.Run("the admin's site list", func(t *testing.T) {
+		repo := NewAdminFeedRepository(db)
+		rows, err := repo.ListSites(t.Context(), rss.AdminSiteQuery{Filter: rss.AdminSitesAll, Sort: rss.AdminSitesByHost, Q: rss.NewsletterSiteHost, Limit: 100})
+		if err != nil {
+			t.Fatalf("ListSites: %v", err)
+		}
+		for _, row := range rows {
+			if row.Site.Host == rss.NewsletterSiteHost {
+				t.Error("ListSites listed the newsletters' site")
+			}
+		}
+		counts, err := repo.CountSites(t.Context(), rss.NewsletterSiteHost)
+		if err != nil {
+			t.Fatalf("CountSites: %v", err)
+		}
+		if counts[rss.AdminSitesAll] != len(rows) {
+			t.Errorf("CountSites = %d, want %d, the sites listed", counts[rss.AdminSitesAll], len(rows))
+		}
+	})
+}
+
+func TestNewsletterFeedNotInCatalog(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminFeedRepository(db)
+	owned := newOwnedFeed(t, db, newTestUser(t, db))
+	by := rss.AuditActor{AdminEmail: "admin@example.com", Via: rss.AuditViaWeb}
+	var sectionID string
+	if err := db.QueryRow(`SELECT id FROM discover_sections ORDER BY position LIMIT 1`).Scan(&sectionID); err != nil {
+		t.Fatal(err)
+	}
+	catalogued := func(t *testing.T) (inCatalog, skipped bool) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT EXISTS (SELECT 1 FROM discover_feeds WHERE feed_id = $1),
+				EXISTS (SELECT 1 FROM discover_skips WHERE feed_id = $1)`, owned.ID).Scan(&inCatalog, &skipped); err != nil {
+			t.Fatal(err)
+		}
+		return inCatalog, skipped
+	}
+
+	if err := repo.SetDiscoverSection(t.Context(), owned.ID, sectionID, by); !errors.Is(err, rss.ErrNoRecord) {
+		t.Errorf("SetDiscoverSection: err = %v, want ErrNoRecord", err)
+	}
+	err := repo.SavePicks(t.Context(), []rss.DiscoverPick{{FeedID: owned.ID, SectionID: sectionID}}, nil, by)
+	if pe := (*rss.PickError)(nil); !errors.As(err, &pe) || !errors.Is(err, rss.ErrNoRecord) {
+		t.Errorf("SavePicks with a pick: err = %v, want a PickError wrapping ErrNoRecord", err)
+	}
+	if err := repo.SavePicks(t.Context(), nil, []string{owned.ID}, by); err != nil {
+		t.Errorf("SavePicks with a skip: %v", err)
+	}
+	if inCatalog, skipped := catalogued(t); inCatalog || skipped {
+		t.Errorf("in the catalog %v, skipped %v; want neither", inCatalog, skipped)
+	}
+}
+
 func TestNewsletterFeedOwnerDeleted(t *testing.T) {
 	db := psqltest.NewDB(t)
 	owner := newTestUser(t, db)

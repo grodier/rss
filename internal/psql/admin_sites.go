@@ -82,6 +82,10 @@ var adminSiteSorts = map[string]adminFeedSort{
 	rss.AdminSitesByFound:       {key: func(a string) string { return a + `.created_at` }, desc: true},
 }
 
+// adminSiteListed is the condition that site s is in the admin's site
+// list: every site but the newsletters' internal one, whose page is a 404.
+const adminSiteListed = `s.host <> '` + rss.NewsletterSiteHost + `'`
+
 // adminSiteSearch is the condition that sites s match q (any case, in the
 // host or title) with q's pattern as argument n.
 func adminSiteSearch(n int) string {
@@ -99,7 +103,7 @@ func (r *AdminFeedRepository) CountSites(ctx context.Context, q string) (map[str
 	}
 	stmt := `SELECT ` + strings.Join(cols, ", ") + `
 		FROM sites s
-		WHERE $1 = '' OR ` + adminSiteSearch(2)
+		WHERE ` + adminSiteListed + ` AND ($1 = '' OR ` + adminSiteSearch(2) + `)`
 
 	counts := make([]int, len(keys))
 	dest := make([]any, len(keys))
@@ -133,7 +137,7 @@ func (r *AdminFeedRepository) ListSites(ctx context.Context, q rss.AdminSiteQuer
 	}
 
 	args := []any{q.Limit}
-	where := []string{filter}
+	where := []string{adminSiteListed, filter}
 	if q.Q != "" {
 		args = append(args, likePattern(q.Q))
 		where = append(where, adminSiteSearch(len(args)))

@@ -42,7 +42,8 @@ func matchOrder(name string, n int) string {
 // title, which is its own name without its platform (discovery.OwnName,
 // #728), matches q at its start or a word's start. A host with one such site keeps it as a site: there are no groups
 // of one. Groups come largest first. With host set, only the sites whose
-// key's host is host come back, none grouped.
+// key's host is host come back, none grouped. The newsletters' internal
+// site (rss.NewsletterSiteHost) never matches.
 func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, limit int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -65,6 +66,7 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, 
 			              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'
 			                   OR f.description ILIKE $1 ESCAPE '\')))
 			  AND ($7 = '' OR split_part(s.host, '/', 1) = $7)
+			  AND s.host <> '` + rss.NewsletterSiteHost + `'
 		), grouped AS (
 			SELECT key_host, count(*) AS n FROM matched WHERE groupable
 			GROUP BY key_host HAVING count(*) > 1

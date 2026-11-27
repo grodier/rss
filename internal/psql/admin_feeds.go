@@ -301,7 +301,8 @@ func (r *AdminFeedRepository) DiscoverSections(ctx context.Context) ([]rss.Secti
 // records nothing. Putting a skipped feed in the catalog unskips it,
 // recorded as feed.discover_unskip. rss.ErrUnknownSection for a section
 // that doesn't exist, rss.ErrFeedGone to add a gone feed (taking one out
-// is fine), rss.ErrNoRecord if the feed doesn't exist.
+// is fine), rss.ErrNoRecord if the feed doesn't exist or is a reader's
+// newsletter feed.
 func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectionID string, by rss.AuditActor) error {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -315,14 +316,15 @@ func (r *AdminFeedRepository) SetDiscoverSection(ctx context.Context, id, sectio
 }
 
 // setDiscoverSection is SetDiscoverSection in tx, which the picking page's
-// Save (SavePicks) runs once per feed.
+// Save (SavePicks) runs once per feed. A reader's newsletter feed is
+// rss.ErrNoRecord: it's never in Discover's catalog.
 func setDiscoverSection(ctx context.Context, tx *sql.Tx, id, sectionID string, by rss.AuditActor) error {
 	// Locking the feed orders this after another change to its section.
 	var gone bool
 	var before rss.Section
 	err := tx.QueryRowContext(ctx, `SELECT f.gone_at IS NOT NULL, COALESCE(fs.id::text, ''), COALESCE(fs.name, '')
 		FROM feeds f`+adminFeedSection+`
-		WHERE f.id = $1 FOR UPDATE OF f`, id).Scan(&gone, &before.ID, &before.Name)
+		WHERE f.id = $1 AND f.owner_id IS NULL FOR UPDATE OF f`, id).Scan(&gone, &before.ID, &before.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.ErrNoRecord
 	}

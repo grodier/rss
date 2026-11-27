@@ -54,6 +54,25 @@ func TestSiteKey(t *testing.T) {
 		{"https://www.reddit.com/user/spez/.rss", "reddit.com/user/spez"},
 		{"https://www.reddit.com/u/spez", "reddit.com/user/spez"},
 
+		// Alias hosts key as their platform's main host.
+		{"https://m.youtube.com/@Name", "youtube.com/@name"},
+		{"https://m.youtube.com/channel/UCabc", "youtube.com/channel/UCabc"},
+		{"https://m.youtube.com/", "youtube.com"},
+		{"https://old.reddit.com/r/golang/", "reddit.com/r/golang"},
+		{"https://new.reddit.com/r/golang", "reddit.com/r/golang"},
+		{"https://np.reddit.com/u/spez", "reddit.com/user/spez"},
+		{"https://m.reddit.com/r/golang", "reddit.com/r/golang"},
+		{"https://i.reddit.com/r/golang", "reddit.com/r/golang"},
+		{"https://old.reddit.com/", "reddit.com"},
+		{"https://music.youtube.com/@name", "music.youtube.com/@name"}, // not an alias
+
+		// tumblr.com: a blog's address is its own host's.
+		{"https://www.tumblr.com/staff", "staff.tumblr.com"},
+		{"https://tumblr.com/staff/123/a-post", "staff.tumblr.com"},
+		{"https://www.tumblr.com/blog/view/staff", "staff.tumblr.com"},
+		{"https://www.tumblr.com/explore", "tumblr.com"},
+		{"https://staff.tumblr.com/post/123", "staff.tumblr.com"},
+
 		// github.com
 		{"https://github.com/Golang/Go", "github.com/golang/go"},
 		{"https://github.com/golang/go/releases.atom", "github.com/golang/go"},
@@ -87,6 +106,12 @@ func TestSiteRoot(t *testing.T) {
 		{"https://www.reddit.com/r/golang/.rss", "https://www.reddit.com/r/golang"},
 		{"https://github.com/golang/go/releases.atom", "https://github.com/golang/go"},
 		{"https://bsky.app/profile/alice.bsky.social/rss", "https://bsky.app/profile/alice.bsky.social"},
+		{"https://m.youtube.com/@name/videos", "https://www.youtube.com/@name"},
+		{"https://old.reddit.com/r/golang/.rss", "https://www.reddit.com/r/golang"},
+		{"http://np.reddit.com/user/spez", "http://www.reddit.com/user/spez"},
+		{"https://old.reddit.com/", "https://www.reddit.com/"},
+		{"https://www.tumblr.com/staff", "https://staff.tumblr.com/"},
+		{"https://www.tumblr.com/explore", "https://www.tumblr.com/"},
 	}
 	for _, tt := range tests {
 		if got := SiteRoot(mustParse(t, tt.in)).String(); got != tt.want {
@@ -115,6 +140,10 @@ func TestIsHomePage(t *testing.T) {
 		{"https://mastodon.social/@bob.rss", false},
 		{"https://www.youtube.com/feeds/videos.xml?channel_id=UCabc", false},
 		{"https://www.youtube.com/channel/UCabc", true},
+		{"https://m.youtube.com/@name", true},
+		{"https://old.reddit.com/r/golang/", true},
+		{"https://old.reddit.com/r/golang/comments/abc", false},
+		{"https://www.tumblr.com/staff", true},
 	}
 	for _, tt := range tests {
 		if got := IsHomePage(mustParse(t, tt.in)); got != tt.want {

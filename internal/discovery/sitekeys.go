@@ -8,13 +8,16 @@ import (
 // SiteKeyRulesVersion is the version of SiteKey's rules. Bump it in any PR
 // that changes what key an address gets, so the next deploy re-keys the
 // sites already stored (www migrate's re-key step).
-const SiteKeyRulesVersion = 1
+const SiteKeyRulesVersion = 2
 
 // SiteKey identifies a site: its lowercase host without port and without a
 // leading "www.", followed on a host shared by many sites by the path that
 // names the site (sitePath). "https://www.Example.com:443/a" -> "example.com",
-// "https://medium.com/@Alice/a-post" -> "medium.com/@alice".
+// "https://medium.com/@Alice/a-post" -> "medium.com/@alice". An alias host's
+// address keys as its platform's main host's (canonicalAddress):
+// "https://old.reddit.com/r/golang" -> "reddit.com/r/golang".
 func SiteKey(u *url.URL) string {
+	u = canonicalCopy(u)
 	return keyHost(u) + sitePath(u)
 }
 
@@ -22,8 +25,10 @@ func SiteKey(u *url.URL) string {
 // the page that names it. It keeps u's scheme and host, "www." included:
 // "https://medium.com/@alice/a-post" -> "https://medium.com/@alice". Like
 // CanonicalFeedURL, the scheme and host are lowercase, without the scheme's
-// default port.
+// default port. An alias host's root is on its platform's main host
+// (canonicalAddress).
 func SiteRoot(u *url.URL) *url.URL {
+	u = canonicalCopy(u)
 	path, _ := rootPath(u)
 	if path == "" {
 		path = "/"
@@ -34,8 +39,10 @@ func SiteRoot(u *url.URL) *url.URL {
 }
 
 // IsHomePage reports whether u is its site's root (SiteRoot) with no query;
-// a trailing "/" doesn't matter.
+// a trailing "/" doesn't matter. An alias host's address is read as its
+// platform's main address (canonicalAddress).
 func IsHomePage(u *url.URL) bool {
+	u = canonicalCopy(u)
 	if u.RawQuery != "" {
 		return false
 	}

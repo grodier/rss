@@ -37,7 +37,7 @@ func runRekey(args []string, getenv func(string) string, stdout, stderr io.Write
 // rekey moves the stored feeds onto the sites the current site-key rules
 // name, once per discovery.SiteKeyRulesVersion (psql's Rekey).
 func rekey(ctx context.Context, db *sql.DB, logger *slog.Logger) error {
-	res, err := psql.NewSiteRepository(db).Rekey(ctx, discovery.SiteKeyRulesVersion, discovery.FeedSiteKey)
+	res, err := psql.NewSiteRepository(db).Rekey(ctx, discovery.SiteKeyRulesVersion, discovery.FeedSiteKey, discovery.AliasHosts())
 	if err != nil {
 		return fmt.Errorf("re-key sites: %w", err)
 	}

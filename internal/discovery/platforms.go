@@ -34,6 +34,19 @@ type platform struct {
 	// Discovery tries them when the site's page lists no feed or answers
 	// with an error status (#849).
 	feeds func(root *url.URL, key string) []string
+
+	// aliases are other hosts (keyHost form) serving the same sites at the
+	// same paths; addresses on them are rewritten to mainHost (#851).
+	aliases []string
+	// mainHost is the host addresses are rewritten to, "www." included
+	// where the platform uses it ("www.youtube.com").
+	mainHost string
+
+	// address, if set, returns the address that u, on the platform's own
+	// host, stands for when that's another site's (segs as for rootPath):
+	// a Tumblr blog's path on tumblr.com names the blog's own host. Nil, or
+	// nil returned: u is left as it is.
+	address func(u *url.URL, segs []string) *url.URL
 }
 
 // platforms are the hosts with their own rules, in no particular order.
@@ -52,6 +65,8 @@ var platforms = []platform{
 		kind:     KindVideos,
 		rootPath: youtubeRootPath,
 		feeds:    youtubeFeeds,
+		aliases:  []string{"m.youtube.com"},
+		mainHost: "www.youtube.com",
 	},
 	{
 		host:     "reddit.com",
@@ -59,6 +74,8 @@ var platforms = []platform{
 		kind:     KindWebsites,
 		rootPath: redditRootPath,
 		feeds:    redditFeeds,
+		aliases:  []string{"old.reddit.com", "new.reddit.com", "np.reddit.com", "m.reddit.com", "i.reddit.com"},
+		mainHost: "www.reddit.com",
 	},
 	{
 		host:     "github.com",
@@ -75,6 +92,14 @@ var platforms = []platform{
 		rootPath: blueskyRootPath,
 		feeds:    blueskyFeeds,
 	},
+	{
+		// Blogs are on <blog>.tumblr.com, ordinary sites with no rule; a
+		// blog's address on tumblr.com is rewritten to it (tumblrAddress).
+		host:    "tumblr.com",
+		name:    "Tumblr",
+		kind:    KindWebsites,
+		address: tumblrAddress,
+	},
 }
 
 // platformsByHost indexes platforms by host, for platformFor.
@@ -85,6 +110,65 @@ var platformsByHost = func() map[string]platform {
 	}
 	return m
 }()
+
+// aliasesByHost indexes platforms by their aliases, for canonicalAddress.
+var aliasesByHost = func() map[string]platform {
+	m := make(map[string]platform)
+	for _, p := range platforms {
+		for _, a := range p.aliases {
+			m[a] = p
+		}
+	}
+	return m
+}()
+
+// canonicalAddress rewrites u in place to its platform's main address: an
+// alias host becomes the main host (old.reddit.com -> www.reddit.com), and
+// a Tumblr blog's path on tumblr.com becomes its own host
+// (tumblr.com/staff/123/a-post -> https://staff.tumblr.com/). Any other
+// address is left as it is.
+func canonicalAddress(u *url.URL) {
+	if aliasHost(u) {
+		return
+	}
+	if p, ok := platformFor(keyHost(u)); ok && p.address != nil {
+		if a := p.address(u, strings.Split(strings.Trim(u.Path, "/"), "/")); a != nil {
+			*u = *a
+		}
+	}
+}
+
+// aliasHost rewrites u's host in place to its platform's main host when it
+// is an alias, keeping the scheme, path and query, and reports whether it
+// was one.
+func aliasHost(u *url.URL) bool {
+	p, ok := aliasesByHost[keyHost(u)]
+	if ok {
+		u.Host = p.mainHost
+	}
+	return ok
+}
+
+// canonicalCopy is a copy of u rewritten by canonicalAddress.
+func canonicalCopy(u *url.URL) *url.URL {
+	c := *u
+	canonicalAddress(&c)
+	return &c
+}
+
+// AliasHosts are the hosts (keyHost form) whose sites now key under another
+// host: the platforms' aliases, and the hosts whose addresses can name
+// another host's site (tumblr.com). For SiteRepository.Rekey.
+func AliasHosts() []string {
+	var hosts []string
+	for _, p := range platforms {
+		hosts = append(hosts, p.aliases...)
+		if p.address != nil {
+			hosts = append(hosts, p.host)
+		}
+	}
+	return hosts
+}
 
 // platformFor returns host's entry (host in keyHost form).
 func platformFor(host string) (platform, bool) {
@@ -299,6 +383,37 @@ func githubFeeds(root *url.URL, _ string) []string {
 		return []string{"https://github.com/" + segs[0] + ".atom"}
 	}
 	return nil
+}
+
+// Tumblr.
+
+// tumblrReserved are first path segments on tumblr.com that are Tumblr's own
+// pages, not a blog's.
+var tumblrReserved = map[string]bool{
+	"about": true, "activity": true, "apps": true, "blog": true,
+	"changes": true, "communities": true, "customize": true,
+	"dashboard": true, "developers": true, "docs": true, "explore": true,
+	"following": true, "help": true, "inbox": true, "jobs": true,
+	"likes": true, "live": true, "login": true, "logout": true,
+	"messages": true, "new": true, "oauth": true, "policy": true,
+	"privacy": true, "reblog": true, "register": true, "search": true,
+	"settings": true, "share": true, "tagged": true, "themes": true,
+	"tumblelog": true,
+}
+
+// tumblrAddress: /blog/…, /blog/view/blog/… -> https://blog.tumblr.com/,
+// when blog isn't one of Tumblr's own pages and is a valid host label.
+func tumblrAddress(_ *url.URL, segs []string) *url.URL {
+	blog := strings.ToLower(seg(segs, 0))
+	if blog == "blog" && seg(segs, 1) == "view" {
+		blog = strings.ToLower(seg(segs, 2))
+	} else if tumblrReserved[blog] {
+		return nil
+	}
+	if !validLabel(blog) {
+		return nil
+	}
+	return &url.URL{Scheme: "https", Host: blog + ".tumblr.com", Path: "/"}
 }
 
 // Bluesky.

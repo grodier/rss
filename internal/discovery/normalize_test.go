@@ -29,6 +29,19 @@ func TestParseInput(t *testing.T) {
 		{"NPR. Org", "https://npr.org/"},
 		{"https: //npr.org", "https://npr.org/"},
 		{"npr.org/ news", "https://npr.org/news"},
+		// Platforms' alias hosts and Tumblr blogs' addresses on tumblr.com.
+		{"m.youtube.com/@name", "https://www.youtube.com/@name"},
+		{"old.reddit.com/r/golang", "https://www.reddit.com/r/golang"},
+		{"http://new.reddit.com/r/golang/?x=1", "http://www.reddit.com/r/golang/?x=1"},
+		{"tumblr.com/staff", "https://staff.tumblr.com/"},
+		{"https://www.tumblr.com/Staff/123/a-post", "https://staff.tumblr.com/"},
+		{"tumblr.com/blog/view/staff", "https://staff.tumblr.com/"},
+		{"tumblr.com/explore", "https://tumblr.com/explore"},
+		{"tumblr.com/blog", "https://tumblr.com/blog"},
+		{"tumblr.com/", "https://tumblr.com/"},
+		{"tumblr.com/bad_name", "https://tumblr.com/bad_name"},
+		{"music.youtube.com/x", "https://music.youtube.com/x"},
+		{"staff.tumblr.com", "https://staff.tumblr.com/"},
 
 		{"hacker news", ""},
 		{"example.com/a b", ""},
@@ -89,6 +102,10 @@ func TestCanonicalFeedURL(t *testing.T) {
 		{"https://example.com", "https://example.com/"},
 		{"https://example.com?a=1", "https://example.com/?a=1"},
 		{"https://example.com/Feed?A=1", "https://example.com/Feed?A=1"},
+		{"https://old.reddit.com/r/golang/.rss", "https://www.reddit.com/r/golang/.rss"},
+		{"https://M.YouTube.com/feeds/videos.xml?channel_id=UCabc", "https://www.youtube.com/feeds/videos.xml?channel_id=UCabc"},
+		{"https://staff.tumblr.com/rss", "https://staff.tumblr.com/rss"},
+		{"https://www.tumblr.com/staff", "https://www.tumblr.com/staff"}, // only alias hosts: feeds are on the blog's host
 	}
 	for _, tt := range tests {
 		u := mustParse(t, tt.in)

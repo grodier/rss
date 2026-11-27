@@ -358,9 +358,12 @@ type RekeyResult struct {
 // seed's priority so the site gets its own details, feeds and icon. A bare
 // host's site left with no feeds is deleted. It then records version, all
 // in one transaction. As upsertFeed, it never moves a feed between two
-// sites with a path or two hosts. RekeyResult says what it did; nothing
-// when the version is current.
-func (r *SiteRepository) Rekey(ctx context.Context, version int, siteKey func(siteURL, feedURL string) (key, root string)) (RekeyResult, error) {
+// sites with a path or two hosts, except off an alias host's site
+// (aliasHosts, discovery.AliasHosts: m.youtube.com, old.reddit.com,
+// tumblr.com): a feed there moves whenever its key differs, whatever the
+// new key's host, and the site is deleted once it has no feeds. RekeyResult
+// says what it did; nothing when the version is current.
+func (r *SiteRepository) Rekey(ctx context.Context, version int, siteKey func(siteURL, feedURL string) (key, root string), aliasHosts []string) (RekeyResult, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return RekeyResult{}, err
@@ -376,12 +379,13 @@ func (r *SiteRepository) Rekey(ctx context.Context, version int, siteKey func(si
 		return RekeyResult{Skipped: true}, nil
 	}
 
-	// Only feeds on a bare host's site can move. They're read in full
-	// before any write, as a connection runs one statement at a time.
+	// Only feeds on a bare host's site or an alias host's can move. They're
+	// read in full before any write, as a connection runs one statement at
+	// a time.
 	type feedSite struct{ feedID, url, siteURL, siteID, host string }
 	rows, err := tx.QueryContext(ctx, `SELECT f.id, f.url, f.site_url, s.id, s.host
 		FROM feeds f JOIN sites s ON s.id = f.site_id
-		WHERE position('/' in s.host) = 0`)
+		WHERE position('/' in s.host) = 0 OR split_part(s.host, '/', 1) = ANY($1)`, pq.Array(aliasHosts))
 	if err != nil {
 		return RekeyResult{}, err
 	}
@@ -399,12 +403,20 @@ func (r *SiteRepository) Rekey(ctx context.Context, version int, siteKey func(si
 		return RekeyResult{}, err
 	}
 
+	alias := make(map[string]bool, len(aliasHosts))
+	for _, h := range aliasHosts {
+		alias[h] = true
+	}
 	var res RekeyResult
 	sites := map[string]string{} // key -> site ID, for keys already handled
-	emptied := map[string]bool{} // bare sites that lost a feed
+	emptied := map[string]bool{} // sites that lost a feed
 	for _, f := range feeds {
 		key, root := siteKey(f.siteURL, f.url)
-		if !strings.Contains(key, "/") || discovery.KeyHost(key) != f.host {
+		if alias[discovery.KeyHost(f.host)] {
+			if key == "" || key == f.host {
+				continue
+			}
+		} else if !strings.Contains(key, "/") || discovery.KeyHost(key) != f.host {
 			continue
 		}
 		id, ok := sites[key]

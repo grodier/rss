@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -78,4 +79,48 @@ func (s *Server) uuidParam(w http.ResponseWriter, r *http.Request, name string) 
 		return "", false
 	}
 	return id, true
+}
+
+// visibleFeed returns the feed the URL's {id} names, as the logged-in reader
+// sees it (FeedStore.GetVisible). If ok is false it has already written the
+// response: 404 for an id that isn't a UUID, no such feed, or another
+// reader's newsletter feed.
+func (s *Server) visibleFeed(w http.ResponseWriter, r *http.Request) (feed rss.Feed, ok bool) {
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
+		return rss.Feed{}, false
+	}
+	userID, _ := s.authenticatedUserID(r)
+	feed, err := s.services.FeedService.GetVisible(r.Context(), userID, id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return rss.Feed{}, false
+	}
+	return feed, true
+}
+
+// visibleArticle returns the article the URL's {id} names, as the logged-in
+// reader sees it (ArticleStore.GetVisible). If ok is false it has already
+// written the response: 404 for an id that isn't a UUID, no such article,
+// or an article in another reader's newsletter feed.
+func (s *Server) visibleArticle(w http.ResponseWriter, r *http.Request) (article rss.Article, ok bool) {
+	id, ok := s.uuidParam(w, r, "id")
+	if !ok {
+		return rss.Article{}, false
+	}
+	userID, _ := s.authenticatedUserID(r)
+	article, err := s.services.ArticleService.GetVisible(r.Context(), userID, id)
+	if err != nil {
+		if errors.Is(err, rss.ErrNoRecord) {
+			s.notFoundResponse(w, r)
+		} else {
+			s.serverErrorHTML(w, r, err)
+		}
+		return rss.Article{}, false
+	}
+	return article, true
 }

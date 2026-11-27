@@ -14,11 +14,15 @@ import (
 
 // Site returns site id's page, or rss.ErrNoRecord: its icon's bookkeeping,
 // its lookup (by its host, the lookups' site key) and its feeds by title.
+// The newsletters' internal site is rss.ErrNoRecord: its feeds are private.
 func (r *AdminFeedRepository) Site(ctx context.Context, id string) (rss.AdminSite, error) {
 	var out rss.AdminSite
 	var err error
 	if out.Site, err = NewSiteRepository(r.DB).GetByID(ctx, id); err != nil {
 		return rss.AdminSite{}, err
+	}
+	if out.Site.Host == rss.NewsletterSiteHost {
+		return rss.AdminSite{}, rss.ErrNoRecord
 	}
 	if out.Icon, err = NewDebugRepository(r.DB).SiteDebug(ctx, id); err != nil {
 		return rss.AdminSite{}, err
@@ -78,6 +82,10 @@ var adminSiteSorts = map[string]adminFeedSort{
 	rss.AdminSitesByFound:       {key: func(a string) string { return a + `.created_at` }, desc: true},
 }
 
+// adminSiteListed is the condition that site s is in the admin's site
+// list: every site but the newsletters' internal one, whose page is a 404.
+const adminSiteListed = `s.host <> '` + rss.NewsletterSiteHost + `'`
+
 // adminSiteSearch is the condition that sites s match q (any case, in the
 // host or title) with q's pattern as argument n.
 func adminSiteSearch(n int) string {
@@ -95,7 +103,7 @@ func (r *AdminFeedRepository) CountSites(ctx context.Context, q string) (map[str
 	}
 	stmt := `SELECT ` + strings.Join(cols, ", ") + `
 		FROM sites s
-		WHERE $1 = '' OR ` + adminSiteSearch(2)
+		WHERE ` + adminSiteListed + ` AND ($1 = '' OR ` + adminSiteSearch(2) + `)`
 
 	counts := make([]int, len(keys))
 	dest := make([]any, len(keys))
@@ -129,7 +137,7 @@ func (r *AdminFeedRepository) ListSites(ctx context.Context, q rss.AdminSiteQuer
 	}
 
 	args := []any{q.Limit}
-	where := []string{filter}
+	where := []string{adminSiteListed, filter}
 	if q.Q != "" {
 		args = append(args, likePattern(q.Q))
 		where = append(where, adminSiteSearch(len(args)))
@@ -207,10 +215,11 @@ func (r *AdminFeedRepository) SiteIcon(ctx context.Context, id string) (rss.Site
 // site.check_icon by by. It also clears icon_checked_at, so the site counts
 // as never checked and the icon runner takes it whether or not it has a
 // subscribed feed (siteIconDue); the runner sets it again when it records
-// the check. rss.ErrNoRecord if the site doesn't exist.
+// the check. rss.ErrNoRecord if the site doesn't exist or is the
+// newsletters' internal site.
 func (r *AdminFeedRepository) CheckIcon(ctx context.Context, id string, by rss.AuditActor) error {
 	return r.updateRow(ctx, "site", id, by, "site.check_icon",
-		`SELECT icon_checked_at, icon_next_check_at FROM sites WHERE id = $1 FOR UPDATE`,
+		`SELECT icon_checked_at, icon_next_check_at FROM sites WHERE id = $1 AND host <> '`+rss.NewsletterSiteHost+`' FOR UPDATE`,
 		`UPDATE sites SET icon_checked_at = NULL, icon_next_check_at = now() WHERE id = $1
 			RETURNING icon_checked_at, icon_next_check_at`,
 		"icon_checked_at", "icon_next_check_at")
@@ -220,7 +229,8 @@ func (r *AdminFeedRepository) CheckIcon(ctx context.Context, id string, by rss.A
 // priority, as a reader's lookup does (LookupRepository.Request), however
 // recently it last ran, and returns it; a lookup already pending or running
 // is returned as it is. It's recorded as site.lookup by by, with the
-// lookup's ID and status. rss.ErrNoRecord if the site doesn't exist.
+// lookup's ID and status. rss.ErrNoRecord if the site doesn't exist or is
+// the newsletters' internal site.
 func (r *AdminFeedRepository) CheckForFeeds(ctx context.Context, id string, by rss.AuditActor) (rss.Lookup, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -229,7 +239,7 @@ func (r *AdminFeedRepository) CheckForFeeds(ctx context.Context, id string, by r
 	defer tx.Rollback()
 
 	var host, url string
-	err = tx.QueryRowContext(ctx, `SELECT host, url FROM sites WHERE id = $1`, id).Scan(&host, &url)
+	err = tx.QueryRowContext(ctx, `SELECT host, url FROM sites WHERE id = $1 AND host <> $2`, id, rss.NewsletterSiteHost).Scan(&host, &url)
 	if errors.Is(err, sql.ErrNoRows) {
 		return rss.Lookup{}, rss.ErrNoRecord
 	}

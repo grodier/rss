@@ -156,10 +156,8 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 		if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil {
 			feed := feedInfo(resp.URL, f, "")
 			siteURL := resp.URL
-			if f.SiteURL != "" {
-				if su, err := url.Parse(f.SiteURL); err == nil && su.Host != "" {
-					siteURL = su
-				}
+			if su, ok := channelLink(f.SiteURL); ok {
+				siteURL = su
 			}
 			site := SiteInfo{
 				Key:         SiteKey(siteURL),
@@ -323,6 +321,22 @@ func feedInfo(finalURL *url.URL, parsed feedparse.Feed, candidateTitle string) F
 		f.Title = f.URL
 	}
 	return f
+}
+
+// channelLink parses a feed's link to its site (feedparse.Meta.SiteURL)
+// as a site's address: ok is false when it has no host or its host isn't a
+// valid domain name (validHost), and the feed's own address stands in. A
+// feed can't name a site discovery wouldn't accept as input: "www.newsletters"
+// would key to rss.NewsletterSiteHost.
+func channelLink(raw string) (u *url.URL, ok bool) {
+	if raw == "" {
+		return nil, false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || !validHost(strings.ToLower(u.Hostname())) {
+		return nil, false
+	}
+	return u, true
 }
 
 // feedSite returns site, a page's, with the key and root of the site that

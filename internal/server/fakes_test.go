@@ -17,14 +17,18 @@ import (
 )
 
 type fakeFeedStore struct {
-	getByIDFn        func(ctx context.Context, id string) (rss.Feed, error)
+	getVisibleFn     func(ctx context.Context, userID, id string) (rss.Feed, error)
 	listBySiteFn     func(ctx context.Context, siteID string) ([]rss.Feed, error)
 	siteFeedFactsFn  func(ctx context.Context, siteID string) (map[string]rss.FeedFacts, error)
 	requestRefreshFn func(ctx context.Context, id string) error
 }
 
-func (f *fakeFeedStore) GetByID(ctx context.Context, id string) (rss.Feed, error) {
-	return f.getByIDFn(ctx, id)
+// GetVisible returns a feed with just its ID when getVisibleFn is nil.
+func (f *fakeFeedStore) GetVisible(ctx context.Context, userID, id string) (rss.Feed, error) {
+	if f.getVisibleFn == nil {
+		return rss.Feed{ID: id}, nil
+	}
+	return f.getVisibleFn(ctx, userID, id)
 }
 
 func (f *fakeFeedStore) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
@@ -341,7 +345,7 @@ func (f *fakeRefresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchRe
 }
 
 type fakeArticleStore struct {
-	getByIDFn      func(ctx context.Context, id string) (rss.Article, error)
+	getVisibleFn   func(ctx context.Context, userID, id string) (rss.Article, error)
 	listByFeedFn   func(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listByFeedsFn  func(ctx context.Context, feedIDs []string, before rss.ArticleCursor, limit int) ([]rss.Article, error)
 	listTimelineFn func(ctx context.Context, userID string, filter rss.TimelineFilter, before rss.ArticleCursor, limit int) ([]rss.ArticleWithFeed, error)
@@ -349,8 +353,12 @@ type fakeArticleStore struct {
 	reportImageFn  func(ctx context.Context, id string) error
 }
 
-func (f *fakeArticleStore) GetByID(ctx context.Context, id string) (rss.Article, error) {
-	return f.getByIDFn(ctx, id)
+// GetVisible returns an article with just its ID when getVisibleFn is nil.
+func (f *fakeArticleStore) GetVisible(ctx context.Context, userID, id string) (rss.Article, error) {
+	if f.getVisibleFn == nil {
+		return rss.Article{ID: id}, nil
+	}
+	return f.getVisibleFn(ctx, userID, id)
 }
 
 func (f *fakeArticleStore) ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error) {

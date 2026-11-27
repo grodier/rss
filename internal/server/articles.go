@@ -17,20 +17,11 @@ import (
 )
 
 // articleHandler shows an article's content, else its summary, with a link to
-// the original. Any logged-in user can open any article.
+// the original. Any logged-in user can open any article, except one in
+// another reader's newsletter feed, which is a 404.
 func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.uuidParam(w, r, "id")
+	article, ok := s.visibleArticle(w, r)
 	if !ok {
-		return
-	}
-
-	article, err := s.services.ArticleService.GetByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
 		return
 	}
 
@@ -43,7 +34,7 @@ func (s *Server) articleHandler(w http.ResponseWriter, r *http.Request) {
 		s.logError(r, err) // the page still renders
 	}
 
-	feed, err := s.services.FeedService.GetByID(r.Context(), article.FeedID)
+	feed, err := s.services.FeedService.GetVisible(r.Context(), userID, article.FeedID)
 	if err != nil {
 		s.serverErrorHTML(w, r, err)
 		return
@@ -206,13 +197,13 @@ func readOnLabel(article rss.Article, site rss.Site, name string) string {
 // sent by read-pings.ts). The request body is ignored. CrossOriginProtection rejects
 // cross-site POSTs; pings and beacons from our own pages are same-origin.
 func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.uuidParam(w, r, "id")
+	article, ok := s.visibleArticle(w, r)
 	if !ok {
 		return
 	}
 
 	userID, _ := s.authenticatedUserID(r)
-	if err := s.services.ReadService.MarkRead(r.Context(), userID, id); err != nil {
+	if err := s.services.ReadService.MarkRead(r.Context(), userID, article.ID); err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
 			s.notFoundResponse(w, r)
 		} else {
@@ -231,12 +222,12 @@ func (s *Server) articleReadHandler(w http.ResponseWriter, r *http.Request) {
 // stand in on later views. The request body is ignored; CrossOriginProtection
 // rejects cross-site POSTs, as for articleReadHandler.
 func (s *Server) articleImageFailedHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.uuidParam(w, r, "id")
+	article, ok := s.visibleArticle(w, r)
 	if !ok {
 		return
 	}
 
-	if err := s.services.ArticleService.ReportImageFailed(r.Context(), id); err != nil {
+	if err := s.services.ArticleService.ReportImageFailed(r.Context(), article.ID); err != nil {
 		if errors.Is(err, rss.ErrNoRecord) {
 			s.notFoundResponse(w, r)
 		} else {
@@ -278,10 +269,11 @@ func (s *Server) articleUnstarHandler(w http.ResponseWriter, r *http.Request) {
 // #article-{id}). save-star.ts posts the same form with fetch and gets a 204
 // instead, so it can tell success from a redirect to the login page.
 func (s *Server) toggleAction(w http.ResponseWriter, r *http.Request, do func(ctx context.Context, userID, articleID string) error) {
-	id, ok := s.uuidParam(w, r, "id")
+	article, ok := s.visibleArticle(w, r)
 	if !ok {
 		return
 	}
+	id := article.ID
 
 	var form returnForm
 	if err := s.decodePostForm(w, r, &form); err != nil {

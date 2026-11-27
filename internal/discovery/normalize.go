@@ -78,12 +78,19 @@ func canonicalize(u *url.URL) {
 
 // validHost reports whether host (already lowercase) is a domain name with at
 // least two labels, each 1–63 characters of [a-z0-9-] not starting or ending
-// with "-", whose last label is at least two letters or starts with "xn--".
-// IP literals are rejected: sites are identified by name.
+// with "-", whose last label is at least two letters or starts with "xn--",
+// and is one still without a leading "www.", as its site key has it
+// (keyHost): "www.newsletters" would key to rss.NewsletterSiteHost. IP
+// literals are rejected: sites are identified by name.
 func validHost(host string) bool {
 	if _, err := netip.ParseAddr(host); err == nil {
 		return false
 	}
+	return validDomain(host) && validDomain(strings.TrimPrefix(host, "www."))
+}
+
+// validDomain is validHost's check of one name.
+func validDomain(host string) bool {
 	labels := strings.Split(host, ".")
 	if len(labels) < 2 {
 		return false

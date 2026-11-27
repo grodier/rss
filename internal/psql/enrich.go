@@ -16,7 +16,7 @@ import (
 // from articles' web pages.
 //
 // Jobs exist only for wanted feeds (enrichWanted): a feed someone follows
-// or one in Discover's catalog (#708). saveArticles queues a wanted feed's
+// or one in Discover's catalog (#708), never a newsletter (#840). saveArticles queues a wanted feed's
 // new arrivals; a feed becoming wanted gets its backlog queued
 // (queueEnrichBacklog: a first follower, or entering the catalog), and one
 // becoming unwanted has its pending jobs dropped (dropUnwantedEnrichJobs:
@@ -31,11 +31,14 @@ func NewEnrichRepository(db *sql.DB) *EnrichRepository {
 }
 
 // enrichWanted is true for the feed whose ID is the SQL expression feed
-// when its articles may have enrichment jobs: someone follows it or it's
-// in Discover's catalog.
+// when its articles may have enrichment jobs: it isn't a newsletter, whose
+// links are personal and whose pages are never fetched (fetching one can
+// count as an open or a click), and someone follows it or it's in
+// Discover's catalog.
 func enrichWanted(feed string) string {
-	return `(EXISTS (SELECT 1 FROM subscriptions ws WHERE ws.feed_id = ` + feed + `)
-		OR EXISTS (SELECT 1 FROM discover_feeds wd WHERE wd.feed_id = ` + feed + `))`
+	return `(NOT EXISTS (SELECT 1 FROM feeds wf WHERE wf.id = ` + feed + ` AND wf.owner_id IS NOT NULL)
+		AND (EXISTS (SELECT 1 FROM subscriptions ws WHERE ws.feed_id = ` + feed + `)
+		     OR EXISTS (SELECT 1 FROM discover_feeds wd WHERE wd.feed_id = ` + feed + `)))`
 }
 
 // enrichJobDue is true for a job j, of article a, that ClaimNext may
@@ -62,11 +65,12 @@ const (
 // ArticleRepository.ReportImageFailed) needs it too, since a report while
 // the feed wasn't wanted queued nothing. The page_* ones skip articles
 // enriched while the feed was wanted before. An article that already has a
-// job keeps it.
+// job keeps it. A newsletter feed queues nothing, as enrichWanted says.
 func queueEnrichBacklog(ctx context.Context, q querier, feedID string) error {
 	_, err := q.ExecContext(ctx, `INSERT INTO enrich_jobs (article_id, priority)
 		SELECT id, $2 FROM articles
 		WHERE feed_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM feeds WHERE id = $1 AND owner_id IS NOT NULL)
 		  AND url <> '' AND (image_url = '' OR title = '' OR excerpt = '' OR image_failed_at IS NOT NULL)
 		  AND page_image_url = '' AND page_title = '' AND page_description = ''
 		ORDER BY timeline_at DESC, id DESC

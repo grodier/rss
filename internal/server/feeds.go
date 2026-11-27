@@ -292,8 +292,7 @@ func (s *Server) feedsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
-	feedID, ok := s.uuidParam(w, r, "id")
-	if !ok {
+	if _, ok := s.uuidParam(w, r, "id"); !ok {
 		return
 	}
 
@@ -303,13 +302,8 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
+	feed, ok := s.visibleFeed(w, r)
+	if !ok {
 		return
 	}
 
@@ -320,9 +314,9 @@ func (s *Server) feedHandler(w http.ResponseWriter, r *http.Request) {
 	// can only queue a fetch of a feed that's already stale, and it changes
 	// nothing the user sees except freshness, so a forged request gains
 	// nothing. Subscriptions aren't checked: for a subscribed feed the request
-	// is harmless.
+	// is harmless. A newsletter is never fetched: its articles arrive by email.
 	pending := !feed.RefreshRequestedAt.IsZero()
-	if !pending && feed.GoneAt.IsZero() && !feed.NextFetch.After(time.Now()) {
+	if !pending && !feed.IsNewsletter() && feed.GoneAt.IsZero() && !feed.NextFetch.After(time.Now()) {
 		if err := s.services.FeedService.RequestRefresh(r.Context(), feed.ID); err != nil {
 			s.logError(r, err) // the page still renders
 		} else {
@@ -564,8 +558,7 @@ func (s *Server) toggledFeed(w http.ResponseWriter, r *http.Request, form return
 // the feed named in the URL, and the posted form, decoded into dst. If ok is
 // false it has already written the response.
 func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request, dst any) (feed rss.Feed, ok bool) {
-	id, ok := s.uuidParam(w, r, "id")
-	if !ok {
+	if _, ok := s.uuidParam(w, r, "id"); !ok {
 		return rss.Feed{}, false
 	}
 
@@ -574,16 +567,7 @@ func (s *Server) subscriptionTarget(w http.ResponseWriter, r *http.Request, dst 
 		return rss.Feed{}, false
 	}
 
-	feed, err := s.services.FeedService.GetByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
-		return rss.Feed{}, false
-	}
-	return feed, true
+	return s.visibleFeed(w, r)
 }
 
 // redirectWithFlash flashes msg and sends the user back to the page they
@@ -813,18 +797,8 @@ func postingRate(perWeek float64) string {
 }
 
 func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.uuidParam(w, r, "id")
+	feed, ok := s.visibleFeed(w, r)
 	if !ok {
-		return
-	}
-
-	feed, err := s.services.FeedService.GetByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
 		return
 	}
 
@@ -834,6 +808,10 @@ func (s *Server) feedRefreshHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check these first so these clicks don't use up the user's limit.
+	if feed.IsNewsletter() {
+		redirect("Newsletters arrive by email, so they can't be refreshed.")
+		return
+	}
 	if !feed.GoneAt.IsZero() {
 		redirect("This feed no longer exists, so it can't be refreshed.")
 		return

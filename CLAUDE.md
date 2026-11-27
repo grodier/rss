@@ -137,6 +137,7 @@ The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://gi
 - HTML pages: `s.renderHTML(w, status, "page.html", data)`; on error, `s.serverErrorHTML(w, r, err)`.
   Error pages (403/404/405/500) are HTML via `s.errorHTML`; use `s.notFoundResponse(w, r)` for missing records, never `http.NotFound`.
   A record's UUID in the URL is read with `s.uuidParam(w, r, "id")`, which answers 404 for anything else.
+  A feed or article named in the URL is loaded with `s.visibleFeed` or `s.visibleArticle` (their stores' `GetVisible`), never by ID alone, so another reader's newsletter feed is a 404 (see "Newsletter feeds are private" in `docs/architecture.md`).
   JSON (`writeJSON`) is only for `/healthcheck` (and its `serverErrorJSON` error path); future JSON endpoints go under their own subrouter with JSON error handlers.
 - GET handlers don't write, except idempotent upkeep documented at the call site: queuing a refresh of a stale feed (`feedHandler`), recording that the user opened an article (`articleHandler`), and updating a session's `last_seen_at` in `authenticate` (at most once a day).
 - Forms: a struct with `form:"..."` tags embedding `validator.Validator` (`form:"-"`), decoded with `s.decodePostForm(w, r, &form)` (on error, `s.formErrorResponse(w, r, err)`: 400, or 413 over 64 KiB), validated with `CheckField`, re-rendered with **422** when invalid.

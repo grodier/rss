@@ -630,6 +630,32 @@ func TestFeedAndSiteActions(t *testing.T) {
 	}
 }
 
+// TestNewsletterFeedAndSite checks that a reader's newsletter feed, and the
+// newsletters' internal site, which the store returns as rss.ErrNoRecord
+// (psql's AdminFeedRepository.Feed and Site), are a 404 for the page and
+// every action, which runs nothing and records nothing.
+func TestNewsletterFeedAndSite(t *testing.T) {
+	feeds := &fakeFeeds{feed: testFeed(), site: testSite()}
+	refresher, audit := &fakeRefresher{}, &fakeAudit{}
+	b := feedsServer(t, feeds, refresher, audit)
+	loggedIn := len(audit.events) // the login's
+	owned, internal := "/feeds/"+feedID(3), "/sites/"+siteID(3)
+
+	for _, path := range []string{owned, internal} {
+		if rr := b.get(t, path); rr.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, rr.Code)
+		}
+	}
+	for _, path := range []string{owned + "/refresh", owned + "/reset-backoff", owned + "/clear-gone", owned + "/discover", internal + "/lookup", internal + "/check-icon"} {
+		if rr := b.post(t, path, url.Values{"section": {testSections[0].ID}}); rr.Code != http.StatusNotFound {
+			t.Errorf("POST %s = %d, want 404", path, rr.Code)
+		}
+	}
+	if len(feeds.calls) != 0 || len(refresher.refreshed) != 0 || len(audit.events) != loggedIn {
+		t.Errorf("store asked %+v, refreshed %v, recorded %+v; want nothing", feeds.calls, refresher.refreshed, audit.events[loggedIn:])
+	}
+}
+
 func TestFeedRefresh(t *testing.T) {
 	tests := []struct {
 		name    string

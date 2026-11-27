@@ -17,7 +17,7 @@ import (
 var feedColumnNames = []string{
 	"id", "site_id", "url", "site_url", "title", "description", "last_fetched_at",
 	"last_attempt_at", "last_error", "consecutive_failures", "next_fetch_at", "etag", "last_modified", "gone_at",
-	"refresh_requested_at", "posts_per_week", "created_at",
+	"refresh_requested_at", "posts_per_week", "owner_id", "created_at",
 }
 
 var (
@@ -61,12 +61,14 @@ const postsPerWeek = `(SELECT count(*) * 7.0 / GREATEST(7, LEAST(30,
 func scanFeed(row interface{ Scan(...any) error }) (rss.Feed, error) {
 	var feed rss.Feed
 	var lastFetched, lastAttempt, goneAt, refreshRequested sql.NullTime
+	var ownerID sql.NullString
 	err := row.Scan(&feed.ID, &feed.SiteID, &feed.Url, &feed.SiteUrl, &feed.Title, &feed.Description, &lastFetched,
 		&lastAttempt, &feed.LastError, &feed.ConsecutiveFailures, &feed.NextFetch,
-		&feed.ETag, &feed.LastModified, &goneAt, &refreshRequested, &feed.PostsPerWeek, &feed.CreatedAt)
+		&feed.ETag, &feed.LastModified, &goneAt, &refreshRequested, &feed.PostsPerWeek, &ownerID, &feed.CreatedAt)
 	if err != nil {
 		return rss.Feed{}, err
 	}
+	feed.OwnerID = ownerID.String
 	feed.LastFetched = lastFetched.Time
 	feed.LastAttempt = lastAttempt.Time
 	feed.GoneAt = goneAt.Time
@@ -234,11 +236,11 @@ func scheduledNext(param string) string {
 		` ELSE GREATEST(` + param + `, now() + interval '` + strconv.Itoa(int(rss.UnfollowedRefreshInterval.Seconds())) + ` seconds') END`
 }
 
-// feedDue is true for a feed ClaimDue may claim: due, not gone, and
-// subscribed, requested or in Discover's catalog (discover_feeds). The
-// admin's Overview counts the refresh queue with it
-// (AdminOverviewRepository.Queues).
-const feedDue = `next_fetch_at <= now() AND gone_at IS NULL
+// feedDue is true for a feed ClaimDue may claim: due, not gone, not a
+// newsletter (they're never fetched), and subscribed, requested or in
+// Discover's catalog (discover_feeds). The admin's Overview counts the
+// refresh queue with it (AdminOverviewRepository.Queues).
+const feedDue = `next_fetch_at <= now() AND gone_at IS NULL AND owner_id IS NULL
 	AND (refresh_requested_at IS NOT NULL
 	     OR EXISTS (SELECT 1 FROM subscriptions s WHERE s.feed_id = feeds.id)
 	     OR EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = feeds.id))`
@@ -273,12 +275,13 @@ func (r *FeedRepository) ClaimDue(ctx context.Context, lease time.Duration) (rss
 }
 
 // RequestRefresh asks background refresh to fetch feed id soon, if it's due
-// (next_fetch_at <= now()), not gone and not already requested. Otherwise, or
-// if the feed doesn't exist, it does nothing and returns nil.
+// (next_fetch_at <= now()), not gone, not a newsletter (never fetched) and
+// not already requested. Otherwise, or if the feed doesn't exist, it does
+// nothing and returns nil.
 func (r *FeedRepository) RequestRefresh(ctx context.Context, id string) error {
 	stmt := `UPDATE feeds SET refresh_requested_at = now()
 		WHERE id = $1 AND refresh_requested_at IS NULL
-		  AND gone_at IS NULL AND next_fetch_at <= now()`
+		  AND gone_at IS NULL AND owner_id IS NULL AND next_fetch_at <= now()`
 
 	_, err := r.DB.ExecContext(ctx, stmt, id)
 	return err
@@ -366,6 +369,25 @@ func (r *FeedRepository) GetByID(ctx context.Context, id string) (rss.Feed, erro
 	}
 
 	return feed, nil
+}
+
+// feedVisible is true for the feed aliased f when reader $2 may see it: it
+// isn't a newsletter, or it's theirs.
+const feedVisible = `(f.owner_id IS NULL OR f.owner_id = $2)`
+
+// GetVisible returns feed id as reader userID sees it: rss.ErrNoRecord if
+// there's no such feed or it's another reader's newsletter feed. Every
+// reader route that takes a feed ID uses it, never GetByID.
+func (r *FeedRepository) GetVisible(ctx context.Context, userID, id string) (rss.Feed, error) {
+	stmt := `SELECT ` + qualifiedFeedColumns + `
+		FROM feeds f
+		WHERE f.id = $1 AND ` + feedVisible
+
+	feed, err := scanFeed(r.DB.QueryRowContext(ctx, stmt, id, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.Feed{}, rss.ErrNoRecord
+	}
+	return feed, err
 }
 
 // GetByURL returns the feed whose url is exactly url (a CanonicalFeedURL),

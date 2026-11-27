@@ -31,7 +31,17 @@ type Feed struct {
 
 	PostsPerWeek float64 // articles published in the last 30 days, per week
 
+	// OwnerID is the reader whose newsletter feed this is, the only one who
+	// can see it; "" for a feed fetched from the web (see IsNewsletter).
+	OwnerID string
+
 	CreatedAt time.Time
+}
+
+// IsNewsletter reports whether the feed is a reader's newsletter feed: made
+// from the mail they receive, never fetched, and private to them.
+func (f Feed) IsNewsletter() bool {
+	return f.OwnerID != ""
 }
 
 // FeedFacts is what a site's page shows about one of its feeds beyond the

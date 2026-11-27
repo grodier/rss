@@ -45,13 +45,15 @@ func IsHomePage(u *url.URL) bool {
 
 // FeedSiteKey is the key and root of the site a stored feed belongs to under
 // the current rules, as discovery's direct branch derives them: from the
-// feed's link (siteURL) when it has one, else from the feed's own URL. Both
-// are "" when neither parses as an address with a host.
+// feed's link (siteURL) when it's a site's address (channelLink), else from
+// the feed's own URL. Both are "" when neither parses as an address with a
+// host.
 func FeedSiteKey(siteURL, feedURL string) (key, root string) {
-	for _, raw := range []string{siteURL, feedURL} {
-		if u, err := url.Parse(raw); err == nil && u.Host != "" {
-			return SiteKey(u), SiteRoot(u).String()
-		}
+	if u, ok := channelLink(siteURL); ok {
+		return SiteKey(u), SiteRoot(u).String()
+	}
+	if u, err := url.Parse(feedURL); err == nil && u.Host != "" {
+		return SiteKey(u), SiteRoot(u).String()
 	}
 	return "", ""
 }

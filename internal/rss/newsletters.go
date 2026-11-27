@@ -22,6 +22,11 @@ func (a NewsletterAddress) Email(domain string) string {
 	return a.LocalPart + "@" + domain
 }
 
+// NewsletterSiteHost is the host of the one internal site every newsletter
+// feed belongs to, made by a migration. It isn't a real host: discovery
+// never produces it, and it's never listed, matched, fetched or checked.
+const NewsletterSiteHost = "newsletters"
+
 // NewsletterRetiredFor is how long a replaced address keeps receiving, so
 // the reader can move their newsletters to the new one.
 const NewsletterRetiredFor = 30 * 24 * time.Hour

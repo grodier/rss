@@ -182,7 +182,7 @@ func (r *AdminFeedRepository) PickSites(ctx context.Context, q rss.AdminPickQuer
 // each of picks in the catalog as SetDiscoverSection does, recorded as
 // feed.discover, then skips each of skips that isn't in the catalog,
 // recorded as feed.discover_skip (a feed already skipped is left as it
-// is). A pick that fails saves nothing and returns *rss.PickError naming
+// is, and a reader's newsletter feed is never skipped). A pick that fails saves nothing and returns *rss.PickError naming
 // the feed, wrapping rss.ErrUnknownSection, rss.ErrFeedGone or
 // rss.ErrNoRecord.
 func (r *AdminFeedRepository) SavePicks(ctx context.Context, picks []rss.DiscoverPick, skips []string, by rss.AuditActor) error {
@@ -207,7 +207,8 @@ func (r *AdminFeedRepository) SavePicks(ctx context.Context, picks []rss.Discove
 	if len(skips) > 0 {
 		rows, err := tx.QueryContext(ctx, `INSERT INTO discover_skips (feed_id, skipped_by)
 			SELECT f.id, NULLIF($2, '')::uuid FROM feeds f
-			WHERE f.id = ANY($1::uuid[]) AND NOT EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = f.id)
+			WHERE f.id = ANY($1::uuid[]) AND f.owner_id IS NULL
+			  AND NOT EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = f.id)
 			ORDER BY f.id
 			ON CONFLICT (feed_id) DO NOTHING
 			RETURNING feed_id`, pq.Array(skips), by.AdminID)

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -282,6 +283,29 @@ func TestRefresh(t *testing.T) {
 		}
 		if len(store.failures) != 0 {
 			t.Errorf("RecordFailure called %d times, want 0", len(store.failures))
+		}
+	})
+
+	t.Run("refuses a newsletter without fetching", func(t *testing.T) {
+		var requests atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requests.Add(1)
+			w.Header().Set("Content-Type", "application/rss+xml")
+			fmt.Fprint(w, testRSS)
+		}))
+		t.Cleanup(srv.Close)
+		store := &fakeStore{}
+		r := &Refresher{Fetcher: fetcher, Store: store}
+
+		_, err := r.Refresh(context.Background(), rss.Feed{ID: "feed-1", Url: srv.URL, OwnerID: "reader-a"})
+		if !errors.Is(err, ErrNewsletter) {
+			t.Fatalf("Refresh error = %v, want ErrNewsletter", err)
+		}
+		if n := requests.Load(); n != 0 {
+			t.Errorf("fetched %d times, want 0", n)
+		}
+		if store.calls != 0 || len(store.failures) != 0 || len(store.notModified) != 0 || len(store.gone) != 0 {
+			t.Errorf("store recorded something: %+v", store)
 		}
 	})
 

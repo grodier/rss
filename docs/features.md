@@ -552,7 +552,9 @@ Without JavaScript a `<noscript>` meta refresh reloads it every 5 s.
 The last page of Home, for every account, ends with a line counting the sites the reader follows and linking to Discover; other timelines have none, and on a store error it's left out, since it's decoration.
 
 **Infinite scroll.** `infinite-scroll.ts` watches the "Older articles" link; when it nears the viewport it fetches that page, appends its rows (and the "You were here" line, in place) and swaps in the new pager, or, from Home's last page, its end line.
-It keeps the address bar on the topmost visible row (`history.replaceState`), so reload, and Back where the page isn't restored, land nearby.
+It keeps the address bar on the topmost row visible below the sticky bars (`history.replaceState`), so a reload lands on that row's page, with the row at the top.
+Opening an article anchors the address on that article's row instead, and keeps the row's distance from the top of the screen in the history entry's state (until the page is restored from the back/forward cache, scrolling doesn't move it), so Back to a page that's loaded again puts the row back where it was.
+A page loaded again holds only the anchored row's page, so the scroll the browser saved means nothing on it, and Safari keeps it, cut to the shorter page, which landed readers far from where they were; the script sets `history.scrollRestoration` to `manual` and scrolls to the row itself, again once the web fonts are ready unless the reader has scrolled.
 While a page loads the list is `aria-busy`, and if it's still loading after `--delay-busy` the link says so, in its own words, with a spinner, and a plain press does nothing while the rows are on their way.
 A load that fails (no answer within 20 s, a status other than 200, or a redirect, as when the session has ended) says so in a line above the link, which becomes Try again, and announces it; automatic loading stops until Try again works.
 A retry that gets anything but the page follows the link, so the reader lands where the link would have taken them (Log in, with its flash), and Back to a page restored from the back/forward cache finds the failure again.

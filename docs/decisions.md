@@ -857,6 +857,9 @@ Planned in #163 (issues #147–#162).
   No player yet.
 - **Paging works without JavaScript** ("Older articles" with a `?before=` cursor); infinite scroll enhances it.
   Logged-in navigations keep `Cache-Control: no-store`, and Chrome restores the page from its back/forward cache (#773); the script keeps the URL on the visible row so reload, and Back where it isn't restored, land nearby.
+- **Back to a page that's loaded again lands on the article that was opened, where it was on the screen**, not on the topmost visible row or at the scroll the browser saved: that scroll was measured with every page infinite scroll added, and Safari, which never restores these pages from the back/forward cache, kept it on a page holding only one, so readers swiping back landed anywhere.
+  The script restores the row itself (`history.scrollRestoration = "manual"`, the row's position in the history entry's state).
+  Loading the newer pages above it, and restoring the page in Safari, are in `docs/backlog.md` under "Reading".
   (#155, #159)
 - **Back to a timeline is restored from the back/forward cache, starting with Chrome** (#773, planned in Roadmap 2's wave 18): it's the trip readers make most, and a restored page keeps the rows infinite scroll added, its scroll and its images, with no JavaScript of ours.
   Chrome keeps `no-store` pages there, but drops one when a cookie changes, when the page received a `no-store` response to a script, or after 3 minutes.

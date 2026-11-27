@@ -157,9 +157,13 @@ type manifestEntry struct {
 // states. #862's kinds tabs on My feeds share timeline-tabs.ts with the
 // reading pages, which split image-fallback.ts out of its chunk: about 75
 // bytes of chunk overhead and no new code, raised only enough to fit.
+// Back to the opened article's row (infinite-scroll.ts restoring the row
+// where it was on the screen when Safari, or Chrome after 3 minutes,
+// loads the page again) raised both only enough to fit: about 355 bytes
+// of JavaScript and about 20 of CSS for the rows' scroll-margin.
 const (
-	readingJSBudget  = 14100 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14076 with #514, 14099 with #862
-	readingCSSBudget = 11600 // 10378 measured; 11505 with #723, 11592 with #514
+	readingJSBudget  = 14460 // 11875 measured; 13058 before #774, 13223 with it, 13413 with #517, 14076 with #514, 14099 with #862, 14454 with Back to the opened row
+	readingCSSBudget = 11620 // 10378 measured; 11505 with #723, 11592 with #514, 11614 with Back to the opened row
 )
 
 // The admin's build has a manifest, with its page group's entry and the base

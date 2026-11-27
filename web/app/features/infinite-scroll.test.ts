@@ -4,12 +4,12 @@ import { isolate, liveRegion, pageTransition } from "../../shared/test/setup";
 isolate();
 
 // The observers infinite-scroll makes, so a test can say what's in view.
-let observers: { callback: IntersectionObserverCallback; targets: Element[] }[];
+let observers: { callback: IntersectionObserverCallback; targets: Element[]; options?: IntersectionObserverInit }[];
 
 class FakeObserver {
   targets: Element[] = [];
-  constructor(callback: IntersectionObserverCallback) {
-    observers.push({ callback, targets: this.targets });
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+    observers.push({ callback, targets: this.targets, options });
   }
   observe(el: Element) {
     this.targets.push(el);
@@ -291,5 +291,146 @@ describe("infinite-scroll when a load fails", () => {
     await fail(() => fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch")));
     expect(press({ metaKey: true })).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// A row as article_row.html renders it, with the link that opens it.
+const articleRow = (id: string, style = "") =>
+  `<article class="article-row" id="article-${id}"${style}><div class="article-card"><h3 class="article-title"><a href="/articles/${id}">${id}</a></h3></div></article>`;
+
+// start renders a page of rows at url, with the history entry's state,
+// and sets infinite scroll up on it.
+const start = async (url: string, rowsHTML: string, state: unknown = null) => {
+  history.replaceState(state, "", url);
+  document.body.innerHTML = `<main><div class="article-list">${rowsHTML}</div></main>`;
+  observers = [];
+  (await import("./infinite-scroll")).init();
+};
+
+// rowAt makes a row report its distance from the top of the screen.
+const rowAt = (id: string, top: number) =>
+  vi.spyOn(document.getElementById(`article-${id}`)!, "getBoundingClientRect").mockReturnValue({ top } as DOMRect);
+
+// showRows tells the rows' observer which rows came into view, and lets
+// the URL catch up.
+const showRows = async (...ids: string[]) => {
+  observers[0].callback(
+    ids.map(
+      (id) =>
+        ({
+          isIntersecting: true,
+          target: document.getElementById(`article-${id}`),
+        }) as unknown as IntersectionObserverEntry,
+    ),
+    {} as never,
+  );
+  await vi.advanceTimersByTimeAsync(300);
+};
+
+// open presses a row's link, with the event's other fields as given, and
+// returns the event; the browser's own navigation never runs.
+const open = (id: string, init: MouseEventInit = {}) => {
+  const e = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0, ...init });
+  document.addEventListener("click", (ev) => ev.preventDefault(), { once: true });
+  document.querySelector(`#article-${id} .article-card a`)!.dispatchEvent(e);
+  return e;
+};
+
+describe("infinite-scroll's URL", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  });
+
+  it("takes over restoring the scroll", async () => {
+    await start("/timelines/all", articleRow("a1"));
+    expect(history.scrollRestoration).toBe("manual");
+  });
+
+  it("follows the topmost visible row, but stays plain on the first", async () => {
+    await start("/timelines/all", articleRow("a1") + articleRow("a2") + articleRow("a3"));
+    rowAt("a1", 0);
+    rowAt("a2", 200);
+    rowAt("a3", 400);
+    await showRows("a2", "a3");
+    expect(location.pathname + location.hash).toBe("/timelines/all#article-a2");
+    expect(history.state).toBeNull();
+    await showRows("a1");
+    expect(location.pathname + location.hash).toBe("/timelines/all");
+  });
+
+  it("doesn't count a row under the sticky bars as visible", async () => {
+    await start("/timelines/all", articleRow("a1", ` style="scroll-margin-top: 72px"`));
+    expect(observers[0].options?.rootMargin).toBe("-73px 0px 0px 0px");
+  });
+
+  it("anchors on an opened article's row, with where it was on the screen", async () => {
+    await start("/timelines/all", articleRow("a1") + articleRow("a2") + articleRow("a3"));
+    rowAt("a2", 120);
+    rowAt("a3", 340);
+    await showRows("a2", "a3");
+    open("a3");
+    expect(location.pathname + location.hash).toBe("/timelines/all#article-a3");
+    expect(history.state).toEqual({ row: "article-a3", top: 340 });
+  });
+
+  it("keeps the plain URL for the first row's article", async () => {
+    await start("/timelines/all", articleRow("a1") + articleRow("a2"));
+    rowAt("a2", 120);
+    await showRows("a2");
+    open("a1");
+    expect(location.pathname + location.hash).toBe("/timelines/all");
+    expect(history.state).toBeNull();
+  });
+
+  it("leaves the URL alone for a press with a modifier or another button", async () => {
+    await start("/timelines/all", articleRow("a1") + articleRow("a2") + articleRow("a3"));
+    rowAt("a2", 120);
+    await showRows("a2");
+    open("a3", { metaKey: true });
+    open("a3", { button: 1 });
+    expect(location.hash).toBe("#article-a2");
+    expect(history.state).toBeNull();
+  });
+
+  it("holds the opened row until the page is restored, then follows the rows again", async () => {
+    await start("/timelines/all", articleRow("a1") + articleRow("a2") + articleRow("a3"));
+    rowAt("a2", 120);
+    rowAt("a3", 340);
+    open("a3");
+    await showRows("a2");
+    expect(location.hash).toBe("#article-a3");
+    pageTransition("pageshow", true);
+    await showRows("a2");
+    expect(location.hash).toBe("#article-a2");
+  });
+
+  it("puts an opened article's row back where it was on the screen", async () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ top: 900 } as DOMRect);
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    await start("/timelines/all?before=c1#article-a2", articleRow("a1") + articleRow("a2"), {
+      row: "article-a2",
+      top: 340,
+    });
+    expect(scroll).toHaveBeenCalledWith(0, scrollY + 900 - 340);
+  });
+
+  it("scrolls to the top of a row the URL names without saying where it was", async () => {
+    const into = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    await start("/timelines/all?before=c1#article-a2", articleRow("a1") + articleRow("a2"), {
+      row: "article-a1",
+      top: 340,
+    });
+    expect(into.mock.contexts).toEqual([document.getElementById("article-a2")]);
+    expect(into).toHaveBeenCalledWith({ block: "start" });
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it("leaves the scroll alone when the URL names no row", async () => {
+    const into = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    await start("/timelines/all#elsewhere", `${articleRow("a1")}<p id="elsewhere"></p>`);
+    expect(into).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
   });
 });

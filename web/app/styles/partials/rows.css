@@ -9,11 +9,22 @@
      data-layout="cards". Rules without a layout selector are shared; a
      change to a row is made, and looked at, in both layouts. In both, only
      .article-card opens the article: the byline, the source link and the
-     actions sit under it, in .article-foot. */
+     actions sit under it, in .article-foot. A row the URL anchors on
+     (infinite-scroll.ts keeps it there) lands clear of the sticky page
+     head. */
   .article-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     border-block-end: 1px solid var(--border);
+    scroll-margin-block-start: 4.5rem;
+  }
+
+  /* On phones the page head scrolls away, and the sticky top bar
+     (shell.css) is 65px high, measured. */
+  @media (max-width: 42.99rem) {
+    .article-row {
+      scroll-margin-block-start: 5.125rem;
+    }
   }
 
   /* The kicker: one line, where long authors are cut first, then a long

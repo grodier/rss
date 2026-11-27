@@ -83,6 +83,10 @@ resource "render_web_service" "rss" {
       # Set in Render's dashboard, so it never lands in the state; see "Domain
       # and email" in infra/README.md.
       env_vars["RSS_SMTP_PASSWORD"],
+      # Set in Render's dashboard, so it never lands in the state: the secret
+      # that signs POST /inbound/email's requests (see "Inbound email" in
+      # infra/README.md).
+      env_vars["RSS_INBOUND_SECRET"],
     ]
   }
 }

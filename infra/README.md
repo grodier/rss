@@ -10,6 +10,7 @@ Terraform doesn't own these things that change outside it, and ignores them:
 - **`RSS_DEBUG_EMAILS`**, set in Render's dashboard: the accounts allowed debug mode (see "Debug mode" in [`docs/features.md`](../docs/features.md)).
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard on both services (see "Domain and email").
 - **`RSS_SECRET_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin").
+- **`RSS_INBOUND_SECRET`** on `rss`, set in Render's dashboard (see "Inbound email").
 - **`RSS_RENDER_API_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin's Render API key").
 - **Edge caching**, set in Render's dashboard (see "Edge caching").
 - **The admin's `onrender.com` subdomain, disabled** in Render's dashboard: the provider has no attribute for it (see "The admin").
@@ -372,6 +373,18 @@ Done once, in dashboards, for #389:
 
 Render blocks outbound SMTP only on free instances; `rss` is on Starter.
 If connections to port 465 time out anyway, Resend also listens on 2465 (`RSS_SMTP_PORT`).
+
+## Inbound email
+
+`rss` receives readers' newsletters at `POST /inbound/email`, signed with `RSS_INBOUND_SECRET` (see "Inbound email" in [`docs/architecture.md`](../docs/architecture.md)).
+It's set in Render's dashboard and ignored by Terraform, so it never lands in the state, and `www` refuses to start without it while `RSS_NEWSLETTER_DOMAIN` is set.
+The mail adapter that posts there (Cloudflare's Worker, #869) holds the same value.
+
+### Setting or rotating it
+
+1. Generate it straight into 1Password: `op item create --vault rss --category "API Credential" --title rss-inbound "secret[password]=$(openssl rand -hex 32)"` (to rotate, edit that item's value instead).
+2. Set `RSS_INBOUND_SECRET` to it on `rss`'s **Environment** page (saving redeploys).
+3. Once the adapter exists, give it the same value; between the two steps its posts are refused with a 401, which it answers with a temporary failure, so senders retry later.
 
 ## Edge caching
 

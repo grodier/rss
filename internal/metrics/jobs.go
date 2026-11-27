@@ -12,7 +12,7 @@ import (
 type JobRow struct {
 	PeriodStart   time.Time
 	Instance      string
-	Runner        string // lookup, import, refresh, icon, enrich or mail
+	Runner        string // lookup, import, refresh, icon, enrich, mail, inbound (the server's POST /inbound/email) or newsletter
 	Outcome       string // the runner's, e.g. refresh's saved, not_modified, gone or failed
 	Jobs          int
 	DurationMsSum float64

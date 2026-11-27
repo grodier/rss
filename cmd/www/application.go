@@ -188,6 +188,8 @@ func (app *Application) Run() error {
 		ErrorLog:            errorLog,
 		RUMService:          rum,
 		NewsletterService:   psql.NewNewsletterRepository(db),
+		InboundService:      psql.NewInboundRepository(db),
+		JobMetrics:          jobMetrics,
 	}
 
 	srvConfig := server.Config{
@@ -200,6 +202,7 @@ func (app *Application) Run() error {
 		DebugEmails:  app.config.server.debugEmails,
 
 		NewsletterDomain: app.config.server.newsletterDomain,
+		InboundSecret:    app.config.server.inboundSecret,
 	}
 
 	sessionManager := newSessionManager(db, app.config.env)

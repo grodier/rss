@@ -390,6 +390,26 @@ func TestMetricsSaveJobsRejectsUnknownRunner(t *testing.T) {
 	}
 }
 
+func TestMetricsSaveJobsNewsletterRunners(t *testing.T) {
+	t.Parallel()
+	repo, _ := newMetricsRepo(t)
+	minute := time.Date(2026, 3, 1, 10, 5, 0, 0, time.UTC)
+	rows := []metrics.JobRow{
+		jobRow(minute, "web-1", "inbound", "accepted", 1, 1),
+		jobRow(minute, "web-1", "newsletter", "saved", 1, 1),
+	}
+	if err := repo.SaveJobs(context.Background(), rows); err != nil {
+		t.Fatalf("SaveJobs: %v", err)
+	}
+	got, err := listJobs(t, repo.DB, "minute", minute, minute.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("listJobs: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %d rows, want 2: %+v", len(got), got)
+	}
+}
+
 func TestMetricsRollUpJobs(t *testing.T) {
 	t.Parallel()
 	repo, _ := newMetricsRepo(t)

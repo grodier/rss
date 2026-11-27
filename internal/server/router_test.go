@@ -349,6 +349,7 @@ func TestRoutesRequireAuthentication(t *testing.T) {
 		"/sites/{id}/icon":             true,
 		"/healthcheck":                 true,
 		"/rum":                         true,
+		"/inbound/email":               true,
 		"/manifest.webmanifest":        true,
 		"/privacy":                     true,
 		"/terms":                       true,

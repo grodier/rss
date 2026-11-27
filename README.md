@@ -58,6 +58,7 @@ A flag on the command line wins over its variable, which wins over the default; 
 | `-port` | `RSS_PORT` | `8080` | Server port |
 | `-debug-emails` | `RSS_DEBUG_EMAILS` | _(empty: debug mode off)_ | Accounts that may turn on debug mode, comma-separated (case doesn't matter); see "Debug mode" in [docs/features.md](docs/features.md) |
 | `-newsletter-domain` | `RSS_NEWSLETTER_DOMAIN` | _(empty: newsletters off)_ | The domain of readers' newsletter addresses, like `in.paperround.app` (use `in.localhost` in development); account emails there are refused. See "Newsletters" in [docs/features.md](docs/features.md) |
+| `-inbound-secret` | `RSS_INBOUND_SECRET` | _(empty: `POST /inbound/email` off)_ | The secret that signs the requests of `POST /inbound/email`, which receives readers' newsletters; required with `-env production` when `-newsletter-domain` is set. Locally any random value, like `openssl rand -hex 32`; see "Receiving email locally" below |
 | `-proxy-hops` | `RSS_PROXY_HOPS` | `0` | Reverse proxies in front of the app that append to `X-Forwarded-For` (0–3; 0 ignores the header). The client IP is the entry this many places from the right. Only safe when those proxies are the only way to reach the app |
 | `-db-dsn` | `RSS_DB_DSN` | _(none, required)_ | PostgreSQL DSN |
 | `-db-max-open-conns` | `RSS_DB_MAX_OPEN_CONNS` | `25` | PostgreSQL max open connections |
@@ -197,6 +198,12 @@ In `web/`, `npm run typecheck` checks the TypeScript (`tsc --noEmit`) and `npm r
 
 `make db/seed` creates your local account from `RSS_DEV_EMAIL`, `RSS_DEV_PASSWORD` and (optionally, default `Dev`) `RSS_DEV_NAME` in `.env` (see `.env.example`), with [`admin create-user`](#admin-create-user).
 `make db/reset` runs it at the end when `RSS_DEV_EMAIL` is set.
+
+### Receiving email locally
+
+With `RSS_NEWSLETTER_DOMAIN=in.localhost` and an `RSS_INBOUND_SECRET` in `.env`, `make inbound/post to=<address> file=<message.eml>` signs an `.eml` file as the mail adapter would and posts it to the running app's `POST /inbound/email` (`RSS_INBOUND_URL` overrides the address), printing the status: 202 stored, 404 no such address, 401 a bad signature.
+The address is a reader's from Settings › Newsletters, after the admin turns newsletters on for them; a stored email is an `inbound_emails` row.
+It needs `openssl` and `curl`.
 
 `make db/loadseed` seeds the local database at realistic scale (1,000 feeds, two years of articles, a user with 300 subscriptions) with `tools/loadseed`, then prints how long the timeline, starred, shared and feed queries take, with their plans.
 `make db/loadseed/measure` prints the report again without reseeding.

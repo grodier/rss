@@ -313,3 +313,43 @@ func TestParseConfigNewsletterDomain(t *testing.T) {
 		}
 	}
 }
+
+func TestParseConfigInboundSecret(t *testing.T) {
+	production := map[string]string{
+		"RSS_ENV":           "production",
+		"RSS_DB_DSN":        "postgres://x",
+		"RSS_BASE_URL":      "https://rss.example.com",
+		"RSS_SMTP_HOST":     "smtp.example.com",
+		"RSS_MAIL_FROM":     "rss <hello@rss.example.com>",
+		"RSS_SUPPORT_EMAIL": "help@example.com",
+	}
+	const want = "-inbound-secret (RSS_INBOUND_SECRET) must be set in production when -newsletter-domain is"
+	tests := []struct {
+		name    string
+		args    []string
+		env     map[string]string
+		wantErr bool
+	}{
+		{"production with a newsletter domain and no secret", []string{"-newsletter-domain", "in.example.com"}, production, true},
+		{"production with a newsletter domain and a secret", []string{"-newsletter-domain", "in.example.com", "-inbound-secret", "s3cret"}, production, false},
+		{"production without a newsletter domain", nil, production, false},
+		{"development with a newsletter domain and no secret", []string{"-newsletter-domain", "in.localhost"}, map[string]string{"RSS_DB_DSN": "postgres://x"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := parseConfig(tt.args, envFrom(tt.env), io.Discard)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("parseConfig() error = %v, want it to contain %q", err, want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseConfig() error = %v", err)
+			}
+			if slices.Contains(tt.args, "-inbound-secret") && cfg.server.inboundSecret != "s3cret" {
+				t.Errorf("inboundSecret = %q, want s3cret", cfg.server.inboundSecret)
+			}
+		})
+	}
+}

@@ -3,13 +3,14 @@ name: Infrastructure
 # Plans infra/ changes on pull requests and applies them on main once the owner
 # approves in the infrastructure environment. Never pull_request_target: fork
 # code must never run with these secrets. See "Deploys" in infra/README.md.
-# Markdown-only changes (the runbook) change no resources, so they don't run.
+# Markdown-only changes (the runbook) and the email Worker's tests change no
+# resources, so they don't run.
 on:
   pull_request:
-    paths: ["infra/**", "!infra/**.md"]
+    paths: ["infra/**", "!infra/**.md", "!infra/email-worker/*.test.ts", "!infra/email-worker/testdata/**"]
   push:
     branches: [main]
-    paths: ["infra/**", "!infra/**.md"]
+    paths: ["infra/**", "!infra/**.md", "!infra/email-worker/*.test.ts", "!infra/email-worker/testdata/**"]
 
 permissions:
   contents: read
@@ -56,6 +57,15 @@ jobs:
           terraform_version: "^1.10" # required_version in infra/versions.tf
           terraform_wrapper: false
 
+      # Terraform uploads the Worker's build (email.tf).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: infra/email-worker/.node-version
+          cache: npm
+          cache-dependency-path: infra/email-worker/package-lock.json
+      - name: build the email Worker
+        run: npm --prefix infra/email-worker ci && npm --prefix infra/email-worker run build
+
       - name: terraform init
         run: terraform -chdir=infra init
 
@@ -96,6 +106,15 @@ jobs:
         with:
           terraform_version: "^1.10" # required_version in infra/versions.tf
           terraform_wrapper: false
+
+      # Terraform uploads the Worker's build (email.tf).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: infra/email-worker/.node-version
+          cache: npm
+          cache-dependency-path: infra/email-worker/package-lock.json
+      - name: build the email Worker
+        run: npm --prefix infra/email-worker ci && npm --prefix infra/email-worker run build
 
       - name: terraform init
         run: terraform -chdir=infra init

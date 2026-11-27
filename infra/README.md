@@ -26,6 +26,8 @@ Since the first apply (#214), applies run only from GitHub Actions (see "Approvi
 Locally, run `plan` and `output`, never `apply`.
 Take every value from your password manager, never from a file in the repository:
 
+Terraform reads the email Worker's build, so run `make email-worker` first (from the repository's root).
+
 ```sh
 export AWS_ACCESS_KEY_ID=...        # the rss-tfstate R2 token's Access Key ID
 export AWS_SECRET_ACCESS_KEY=...    # the rss-tfstate R2 token's Secret Access Key
@@ -380,10 +382,11 @@ If connections to port 465 time out anyway, Resend also listens on 2465 (`RSS_SM
 `rss` receives readers' newsletters at `POST /inbound/email`, signed with `RSS_INBOUND_SECRET` (see "Inbound email" in [`docs/architecture.md`](../docs/architecture.md)).
 It's set in Render's dashboard and ignored by Terraform, so it never lands in the state, and `www` refuses to start without it while `RSS_NEWSLETTER_DOMAIN` is set.
 
-Mail reaches it through Cloudflare Email Routing on `in.paperround.app` (`email.tf`): the zone's catch-all rule runs the `rss-inbound-email` Worker (`email-worker/worker.js`), which signs each message with its own `INBOUND_SECRET`, the same value, and posts it to `https://paperround.app/inbound/email`.
+Mail reaches it through Cloudflare Email Routing on `in.paperround.app` (`email.tf`): the zone's catch-all rule runs the `rss-inbound-email` Worker (`email-worker/worker.ts`, built by `tsc` into `email-worker/dist/worker.js`, which Terraform uploads), which signs each message with its own `INBOUND_SECRET`, the same value, and posts it to `https://paperround.app/inbound/email`.
 It answers the sender from the app's status, during delivery, so we never send bounces: 202 accepts, 404 rejects with "550 5.1.1 No such recipient", and 401, 429 and 5xx throw, which Cloudflare answers with a temporary failure, so the sender retries.
 Without posting, it rejects mail to addresses outside `in.paperround.app` (550), mail whose envelope sender is at `paperround.app` or a subdomain (550 5.7.1), and messages over 5 MiB (552).
 Its logs (the Worker's **Observability** tab in Cloudflare's dashboard) show each answer's status, never an address.
+Terraform reads the build, so CI and `infra.yml` run `npm ci` and `npm run build` in `email-worker/` before Terraform; locally, run `make email-worker` before `terraform plan` (see "Running Terraform locally").
 
 ### Setting up inbound email
 

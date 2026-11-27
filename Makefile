@@ -26,15 +26,20 @@ build: assets
 	go build -o bin/www ./cmd/www
 	go build -o bin/admin ./cmd/admin
 
-## test: run tests, the frontend's too (database tests are skipped unless RSS_TEST_DB_DSN is set)
+## test: run tests, the frontend's and the email Worker's too (database tests are skipped unless RSS_TEST_DB_DSN is set)
 .PHONY: test
-test: assets test/web
+test: assets test/web test/email-worker
 	go test ./...
 
 ## test/web: run the frontend tests
 .PHONY: test/web
 test/web: web/node_modules/.package-lock.json
 	npm --prefix web test
+
+## test/email-worker: run the inbound email Worker's tests
+.PHONY: test/email-worker
+test/email-worker: infra/email-worker/node_modules/.package-lock.json
+	npm --prefix infra/email-worker test
 
 ## test/db: run all tests, including database tests, against the local database
 .PHONY: test/db
@@ -64,7 +69,7 @@ inbound/post:
 
 .PHONY: clean
 clean:
-	rm -rf bin web/dist
+	rm -rf bin web/dist infra/email-worker/dist
 
 # ==================================================================================== #
 # FRONTEND
@@ -88,6 +93,20 @@ assets: web/dist/admin/.vite/manifest.json
 .PHONY: assets/watch
 assets/watch: web/node_modules/.package-lock.json
 	npm --prefix web run watch
+
+# ==================================================================================== #
+# THE INBOUND EMAIL WORKER
+# ==================================================================================== #
+
+infra/email-worker/node_modules/.package-lock.json: infra/email-worker/package-lock.json
+	npm --prefix infra/email-worker ci
+
+infra/email-worker/dist/worker.js: infra/email-worker/worker.ts infra/email-worker/tsconfig.json infra/email-worker/tsconfig.build.json infra/email-worker/node_modules/.package-lock.json
+	npm --prefix infra/email-worker run build
+
+## email-worker: build the inbound email Worker into infra/email-worker/dist, which Terraform uploads
+.PHONY: email-worker
+email-worker: infra/email-worker/dist/worker.js
 
 # ==================================================================================== #
 # DATABASE

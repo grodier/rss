@@ -1573,9 +1573,10 @@ func TestTimelineFeedCount(t *testing.T) {
 
 // updateFixtures (-update) makes the tests whose fixtures other code reads
 // write them instead of checking them: TestTimelineSummaryFixture
-// (web/app/features/testdata/timeline-summary.json) and TestHealthcheckFixture
-// (testdata/healthcheck.json).
-var updateFixtures = flag.Bool("update", false, "write the fixtures other code checks (TestTimelineSummaryFixture, TestHealthcheckFixture) instead of checking them")
+// (web/app/features/testdata/timeline-summary.json), TestHealthcheckFixture
+// (testdata/healthcheck.json) and TestInboundSignatureFixture
+// (infra/email-worker/testdata/inbound-signature.json).
+var updateFixtures = flag.Bool("update", false, "write the fixtures other code checks (TestTimelineSummaryFixture, TestHealthcheckFixture, TestInboundSignatureFixture) instead of checking them")
 
 // timelineSummaryFixture is where TestTimelineSummaryFixture writes the
 // summaries timelineForm.summary builds, for timeline-form.test.ts to check

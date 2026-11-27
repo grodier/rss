@@ -216,10 +216,12 @@ Run `go run ./tools/loadseed -h` for its flags (sizes, prefix, random seed).
 make test      # go test ./... and the frontend tests; database tests are skipped
 make test/db   # runs all tests, including database tests, against the local database
 make test/web  # the frontend tests only (Vitest, in web/: npm test)
+make test/email-worker  # the inbound email Worker's tests only (Vitest, in infra/email-worker/: npm test)
 ```
 
 The frontend tests sit next to their modules in `web/` (`share.test.ts` beside `share.ts`) and run in happy-dom.
 `web/app/features/testdata/timeline-summary.json` is written by a Go test: after changing the timeline form's summary in Go, run `go test ./internal/server -run TestTimelineSummaryFixture -update`, then make `timeline-form.ts` pass `make test/web`.
+Likewise `infra/email-worker/testdata/inbound-signature.json`: after changing how `POST /inbound/email` is signed, run `go test ./internal/server -run TestInboundSignatureFixture -update`, then make `worker.ts` pass `make test/email-worker`.
 
 Database tests run when `RSS_TEST_DB_DSN` is set to a migrated database (`make test/db` uses `RSS_DB_DSN`).
 CI sets it and fails if it is missing.

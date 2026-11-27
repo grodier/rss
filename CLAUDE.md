@@ -38,6 +38,8 @@ go vet ./...
 go tool staticcheck ./...        # version pinned in go.mod (tool directive)
 go test ./...                    # DB tests skip without RSS_TEST_DB_DSN
 make test/web                    # the frontend tests (Vitest; npm --prefix web test); make test runs them too
+make email-worker                # build the inbound email Worker into infra/email-worker/dist, which Terraform uploads (Terraform needs it)
+make test/email-worker           # the Worker's tests (npm --prefix infra/email-worker test); make test runs them too
 make test/db                     # all tests against the local DB (make db/start + migrations first)
 go run ./cmd/www                 # run the app; reads RSS_DB_DSN (or: make run, or -db-dsn)
 go run ./cmd/admin               # run the admin site on :4001 (or: make run/admin)
@@ -53,8 +55,8 @@ docker build --target admin -t rss-admin .  # build the admin's image (or: make 
 terraform fmt -recursive infra           # format Terraform; CI's terraform job also runs init -backend=false and validate
 ```
 
-Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/`, the typecheck, the format check and the frontend tests.
-CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` job runs the typecheck, the format check, the frontend tests and the build, and its `terraform` job checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
+Before pushing: run gofmt, vet, staticcheck and tests, and, after changing anything under `web/` or `infra/email-worker/`, that project's typecheck, format check and tests (`npm --prefix <dir> run typecheck`, `run format:check`, `test`).
+CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus `-race`) against Postgres, its `web` and `email-worker` jobs run each npm project's typecheck, format check, tests and build, and its `terraform` job builds the Worker and checks `infra/` (fmt, validate); then its `image` job builds the container image (and, on `main`, pushes it to GHCR) and, on `main`, its `deploy` job deploys it (`deploy.yml`).
 `infra.yml` plans `infra/` changes on PRs and applies them on `main` after the owner approves; `infra-unlock.yml` releases a stale state lock (see "A stale state lock" in `infra/README.md`).
 
 ## Layout
@@ -94,7 +96,8 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/validator`: form validation
 - `web`: the frontend's npm project, built by Vite into `web/dist` (gitignored), and the Go package that embeds the builds (`web.App`, `web.Admin`); `app/` is the reader's code (`entries/`, one per page group, each setting up the enhancements in `features/` its pages use; `styles/`, `base.css` and one sheet per area, each importing the partials in `styles/partials/` its pages use; `images/` for images the stylesheets use, which the build hashes; and `public/` for files that need a fixed URL), `admin/` the admin site's, built apart (`vite.admin.config.ts`, into `dist/admin`) with the same layout, `shared/` what another site could reuse (`lib/`'s generic enhancements, `styles/`'s layers, reset, fonts, tokens and base styles, the fonts, and `types/`, the declarations of browser APIs TypeScript lacks) and `test/`, the frontend tests' helpers
 - `tools/loadseed`: seeds the local database at realistic scale and measures the reading queries (dev only)
-- `infra`: Terraform for production (Render); its README is the runbook
+- `infra`: Terraform for production (Render, and Cloudflare's DNS, Access and Email Routing); its README is the runbook
+- `infra/email-worker`: the Cloudflare Email Worker that signs inbound mail and posts it to `POST /inbound/email`, its own npm project (TypeScript, built with `tsc` into `dist/`, gitignored, which Terraform uploads)
 - `deploy/backup`: the image of the nightly database backup (`pg_dump` to R2), run by Render
 - `migrations`: goose SQL migrations, and a Go package that embeds them (`migrations.FS`) for `www migrate`
 - `docs`: architecture, feature walkthroughs, decisions and backlog (see "Docs")
@@ -215,6 +218,8 @@ The order of planned work isn't in a file: it's the [Roadmap 2 issue](https://gi
   They only re-test the router's or compiler's defaults and become dead weight.
   The same goes for issues and plans that ask for such tests; question them.
 - Standard library only for Go tests (no testify).
+- The email Worker (`infra/email-worker`) follows the frontend's standards with its own npm project: strict TypeScript, Prettier, Vitest tests in `worker.test.ts` (in Node, without happy-dom: it has no DOM), devDependencies justified in their PR, and Go as the spec for its signature (`TestInboundSignatureFixture`).
+  It exports only its handler, since the Workers runtime takes every export for an entrypoint, so tests go through `email()`.
 - Frontend tests use Vitest with happy-dom (`npm --prefix web test`), in a `*.test.ts` next to their module (`share.ts`, `share.test.ts`).
   Test through the markup hooks the server renders (`form[data-toggle]`, `button[data-share-url]`…), import the module in each test after `isolate()` (`web/shared/test/setup.ts`), and test pure functions directly.
   Where a module mirrors Go, Go stays the spec: a Go test writes a fixture (`-update`) that both sides check, like `TestTimelineSummaryFixture`.

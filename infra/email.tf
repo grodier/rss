@@ -18,8 +18,8 @@ resource "cloudflare_workers_script" "inbound_email" {
   account_id         = var.cloudflare_account_id
   script_name        = "rss-inbound-email"
   main_module        = "worker.js"
-  content_file       = "${path.module}/email-worker/worker.js"
-  content_sha256     = filesha256("${path.module}/email-worker/worker.js")
+  content_file       = "${path.module}/email-worker/dist/worker.js"
+  content_sha256     = filesha256("${path.module}/email-worker/dist/worker.js")
   compatibility_date = "2026-11-01"
 
   bindings = [

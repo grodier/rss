@@ -1,14 +1,24 @@
-// The Email Worker that Cloudflare Email Routing's catch-all rule (email.tf)
+// The Email Worker that Cloudflare Email Routing's catch-all rule (infra/email.tf)
 // runs for every message to the paperround.app zone. It signs the raw message
 // and posts it to rss's POST /inbound/email, then turns the answer into the
-// SMTP answer, while the sender is still connected, so we never send bounces.
+// SMTP answer while the sender is still connected, so we never send bounces.
 // The contract is "Inbound email" under "Security measures" in
-// docs/architecture.md; the secret, "Inbound email" in infra/README.md.
-//
-// Bindings (email.tf): INBOUND_URL, NEWSLETTER_DOMAIN and APP_DOMAIN as plain
-// text, and INBOUND_SECRET, a secret the owner sets, kept out of Terraform.
+// docs/architecture.md; the secret is "Inbound email" in infra/README.md.
 //
 // Logs carry statuses only, never addresses.
+//
+// The module exports only its handler: the runtime takes every export for an
+// entrypoint. worker.test.ts tests it through email().
+
+interface Env {
+  // Plain-text bindings, set by Terraform (infra/email.tf).
+  INBOUND_URL: string;
+  NEWSLETTER_DOMAIN: string;
+  APP_DOMAIN: string;
+  // A secret the owner sets, kept out of Terraform; the same value as rss's
+  // RSS_INBOUND_SECRET.
+  INBOUND_SECRET?: string;
+}
 
 // The most the endpoint stores: rss.InboundMaxBytes.
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -21,10 +31,7 @@ export default {
   async email(message, env) {
     const to = message.to;
     // Readers' addresses are ASCII, and a header value must be.
-    if (
-      !/^[\x21-\x7e]+$/.test(to) ||
-      !to.toLowerCase().endsWith("@" + env.NEWSLETTER_DOMAIN)
-    ) {
+    if (!/^[\x21-\x7e]+$/.test(to) || !to.toLowerCase().endsWith("@" + env.NEWSLETTER_DOMAIN)) {
       console.log("inbound: rejected, not the newsletter domain");
       message.setReject(NO_SUCH_RECIPIENT);
       return;
@@ -49,14 +56,12 @@ export default {
 
     const body = new Uint8Array(await new Response(message.raw).arrayBuffer());
     const t = String(Math.floor(Date.now() / 1000));
-    const mac = await sign(env.INBOUND_SECRET, t, to, body);
-
     const res = await fetch(env.INBOUND_URL, {
       method: "POST",
       headers: {
         "Content-Type": "message/rfc822",
         "X-Inbound-To": to,
-        "X-Inbound-Signature": `t=${t},v1=${mac}`,
+        "X-Inbound-Signature": await signature(env.INBOUND_SECRET, t, to, body),
       },
       body,
       redirect: "manual",
@@ -80,33 +85,33 @@ export default {
         throw new Error(`inbound: ${res.status}`);
     }
   },
-};
+} satisfies ExportedHandler<Env>;
 
 // fromDomain reports whether the envelope sender's domain is domain or one of
 // its subdomains (the newsletter domain is one).
-function fromDomain(from, domain) {
+function fromDomain(from: string, domain: string): boolean {
   const at = from.lastIndexOf("@");
   if (at < 0) return false;
-  const d = from.slice(at + 1).toLowerCase().replace(/\.$/, "");
+  const d = from
+    .slice(at + 1)
+    .toLowerCase()
+    .replace(/\.$/, "");
   return d === domain || d.endsWith("." + domain);
 }
 
-// sign returns the hex HMAC-SHA256, keyed with secret, of t + "\n" + to +
-// "\n" + body: X-Inbound-Signature's v1 (inboundMAC in
-// internal/server/inbound.go).
-async function sign(secret, t, to, body) {
+// signature returns X-Inbound-Signature's value, "t=<t>,v1=<hex MAC>", whose
+// MAC is the HMAC-SHA256, keyed with secret, of t + "\n" + to + "\n" + body:
+// inboundMAC in internal/server/inbound.go, which is the spec
+// (TestInboundSignatureFixture).
+async function signature(secret: string, t: string, to: string, body: Uint8Array): Promise<string> {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
   const head = enc.encode(`${t}\n${to}\n`);
   const data = new Uint8Array(head.length + body.length);
   data.set(head);
   data.set(body, head.length);
   const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, data));
-  return Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `t=${t},v1=${Array.from(mac, (b) => b.toString(16).padStart(2, "0")).join("")}`;
 }

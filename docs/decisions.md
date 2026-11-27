@@ -1153,6 +1153,9 @@ Planned in #309 (issues #298, #306, #307).
 - **Its own queue table (`enrich_jobs`) and runner**, one worker by default.
 - **Polite, with a retry story:** one request at a time through `internal/fetch`; a network error, 429 or 5xx is retried after 1 hour, then 6, then given up; any other 4xx or a non-HTML response is given up at once, as is a fetch `internal/fetch` refuses (a blocked address, a body over 5 MiB, too many redirects), which a retry wouldn't change (#306).
   `robots.txt` isn't consulted: it's one fetch of a page a reader is about to see, like a link preview.
+- **A video's description comes from its feed, not its page** (#857, planned in #860): an item with no summary or content of its own takes its `media:description` (at the item's top level, else in a `media:group`, as YouTube's feeds put it) as its summary, and one with no title its `media:title`, so YouTube videos aren't queued for a watch-page fetch that can meet a captcha.
+  The description is plain text, never HTML: it's escaped, a blank line starts a paragraph and a single line break is a `<br>`, so the excerpt and the article page read it as typed.
+  No backfill: `saveArticles` rewrites the summary and excerpt of the articles a feed still lists, so a channel's newest videos get theirs on its next fetch, and older ones keep what they have.
 - **One page parser:** `discovery.ParsePage` reads Open Graph tags and icon links too (#298), for both enrichment and site icons.
 
 ## Design

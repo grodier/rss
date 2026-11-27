@@ -856,13 +856,254 @@ func TestDiscoverSharedHostNoCommonPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Feeds) != 0 || len(res.Checked) != 0 {
-		t.Errorf("Feeds = %v, Checked = %v, want none", feedURLs(res.Feeds), res.Checked)
+	if len(res.Feeds) != 0 {
+		t.Errorf("Feeds = %v, want none", feedURLs(res.Feeds))
 	}
-	if !slices.Equal(f.gets, []string{"https://medium.com/@alice"}) {
-		t.Errorf("gets = %v, want only the page", f.gets)
+	for _, g := range f.gets {
+		for _, p := range CommonFeedPaths {
+			if strings.HasSuffix(g, p) {
+				t.Errorf("fetched common path %s", g)
+			}
+		}
 	}
 	if res.Site.Key != "medium.com/@alice" {
 		t.Errorf("Site.Key = %q, want medium.com/@alice", res.Site.Key)
 	}
+}
+
+// checkedSummary is each check's "source candidate outcome".
+func checkedSummary(checked []CandidateCheck) []string {
+	var s []string
+	for _, c := range checked {
+		s = append(s, c.Source+" "+c.Candidate.URL.String()+" "+c.Outcome)
+	}
+	return s
+}
+
+func TestDiscoverPlatformFeeds(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		responses map[string]*fetch.Response
+		checked   []string // checkedSummary
+		feeds     []string
+		key       string
+	}{
+		{
+			name:  "Medium author",
+			input: "https://medium.com/@alice",
+			responses: map[string]*fetch.Response{
+				"https://medium.com/@alice":      htmlResp(`<title>Alice – Medium</title>`),
+				"https://medium.com/feed/@alice": rssResp("Stories by Alice on Medium", "https://medium.com/@alice?source=rss"),
+			},
+			checked: []string{"platform https://medium.com/feed/@alice feed"},
+			feeds:   []string{"https://medium.com/feed/@alice"},
+			key:     "medium.com/@alice",
+		},
+		{
+			name:  "GitHub repository",
+			input: "https://github.com/owner/repo",
+			responses: map[string]*fetch.Response{
+				"https://github.com/owner/repo":               htmlResp(`<title>GitHub - owner/repo: A tool</title>`),
+				"https://github.com/owner/repo/releases.atom": atomResp("Release notes from repo", "https://github.com/owner/repo/releases"),
+				// tags.atom is not in responses: 404.
+				"https://github.com/owner/repo/commits.atom": atomResp("Recent Commits to repo:main", "https://github.com/owner/repo/commits/main"),
+			},
+			checked: []string{
+				"platform https://github.com/owner/repo/releases.atom feed",
+				"platform https://github.com/owner/repo/tags.atom status 404",
+				"platform https://github.com/owner/repo/commits.atom feed",
+			},
+			feeds: []string{"https://github.com/owner/repo/releases.atom", "https://github.com/owner/repo/commits.atom"},
+			key:   "github.com/owner/repo",
+		},
+		{
+			name:  "Mastodon account",
+			input: "https://mastodon.social/@bob",
+			responses: map[string]*fetch.Response{
+				"https://mastodon.social/@bob":     htmlResp(`<title>Bob (@bob@mastodon.social)</title>`),
+				"https://mastodon.social/@bob.rss": rssResp("Bob", "https://mastodon.social/@bob"),
+			},
+			checked: []string{"platform https://mastodon.social/@bob.rss feed"},
+			feeds:   []string{"https://mastodon.social/@bob.rss"},
+			key:     "mastodon.social/@bob",
+		},
+		{
+			name:  "a page that lists a feed",
+			input: "https://medium.com/@alice",
+			responses: map[string]*fetch.Response{
+				"https://medium.com/@alice":      htmlResp(`<title>Alice</title><link rel="alternate" type="application/rss+xml" href="/listed.xml">`),
+				"https://medium.com/listed.xml":  rssResp("Listed", "https://medium.com/@alice"),
+				"https://medium.com/feed/@alice": rssResp("Stories by Alice on Medium", "https://medium.com/@alice"),
+			},
+			checked: []string{"page https://medium.com/listed.xml feed"},
+			feeds:   []string{"https://medium.com/listed.xml"},
+			key:     "medium.com/@alice",
+		},
+		{
+			name:  "a bare host",
+			input: "https://example.com/",
+			responses: map[string]*fetch.Response{
+				"https://example.com/":        htmlResp(`<title>Example</title>`),
+				"https://example.com/rss.xml": rssResp("Example", "https://example.com/"),
+			},
+			feeds: []string{"https://example.com/rss.xml"},
+			key:   "example.com",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &fakeFetcher{responses: tt.responses}
+			res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertURLs(t, res.Feeds, tt.feeds...)
+			if res.Site.Key != tt.key {
+				t.Errorf("Site.Key = %q, want %q", res.Site.Key, tt.key)
+			}
+			if !res.HomePage {
+				t.Error("HomePage = false, want true: the page was read")
+			}
+			if tt.checked == nil {
+				// The bare host tries the common paths, as before.
+				for _, c := range res.Checked {
+					if c.Source != SourceCommonPath {
+						t.Errorf("Checked has %s from %q, want only common paths", c.Candidate.URL, c.Source)
+					}
+				}
+				if len(res.Checked) != len(CommonFeedPaths) {
+					t.Errorf("Checked %d candidates, want %d", len(res.Checked), len(CommonFeedPaths))
+				}
+				return
+			}
+			if got := checkedSummary(res.Checked); !slices.Equal(got, tt.checked) {
+				t.Errorf("Checked = %q, want %q", got, tt.checked)
+			}
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			if want := 1 + len(tt.checked); len(f.gets) != want {
+				t.Errorf("gets = %v, want %d", f.gets, want)
+			}
+		})
+	}
+}
+
+func TestDiscoverPlatformPageRefused(t *testing.T) {
+	forbidden := &fetch.Response{StatusCode: http.StatusForbidden, Header: http.Header{"Content-Type": {"text/html"}}, Body: []byte("<title>Just a moment</title>")}
+
+	t.Run("its feed answers", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://medium.com/@alice":      forbidden,
+			"https://medium.com/feed/@alice": rssResp("Stories by Alice on Medium", "https://medium.com/@alice?source=rss-abc"),
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://medium.com/@alice"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertURLs(t, res.Feeds, "https://medium.com/feed/@alice")
+		want := SiteInfo{Key: "medium.com/@alice", URL: "https://medium.com/@alice", Title: "Alice", Description: "About Stories by Alice on Medium"}
+		if res.Site != want {
+			t.Errorf("Site = %+v, want %+v", res.Site, want)
+		}
+		if res.HomePage || res.Direct {
+			t.Errorf("HomePage = %v, Direct = %v, want both false", res.HomePage, res.Direct)
+		}
+		if got, want := checkedSummary(res.Checked), []string{"platform https://medium.com/feed/@alice feed"}; !slices.Equal(got, want) {
+			t.Errorf("Checked = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a feed's title keeps its dash", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://www.youtube.com/channel/UCabc":                     forbidden,
+			"https://www.youtube.com/feeds/videos.xml?channel_id=UCabc": atomResp("Kurzgesagt – In a Nutshell", "https://www.youtube.com/channel/UCabc"),
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://www.youtube.com/channel/UCabc"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Site.Key != "youtube.com/channel/UCabc" || res.Site.Title != "Kurzgesagt – In a Nutshell" {
+			t.Errorf("Site = %+v, want youtube.com/channel/UCabc named Kurzgesagt – In a Nutshell", res.Site)
+		}
+	})
+
+	t.Run("its feed doesn't answer", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://medium.com/@alice": forbidden,
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://medium.com/@alice"))
+		if !errors.Is(err, ErrUnreachable) {
+			t.Fatalf("err = %v, want ErrUnreachable", err)
+		}
+		if !strings.Contains(err.Error(), "status 403") {
+			t.Errorf("err = %v, want the page's status", err)
+		}
+		if got, want := checkedSummary(res.Checked), []string{"platform https://medium.com/feed/@alice status 404"}; !slices.Equal(got, want) {
+			t.Errorf("Checked = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a bare host", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://example.com/": forbidden,
+		}}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://example.com/"))
+		if !errors.Is(err, ErrUnreachable) {
+			t.Fatalf("err = %v, want ErrUnreachable", err)
+		}
+		if len(res.Checked) != 0 || !slices.Equal(f.gets, []string{"https://example.com/"}) {
+			t.Errorf("Checked = %v, gets = %v, want only the page", res.Checked, f.gets)
+		}
+	})
+
+	t.Run("the address is one of the platform's feeds", func(t *testing.T) {
+		for _, tt := range []struct{ input, other string }{
+			{"https://github.com/owner/repo/releases.atom", "https://github.com/owner/repo/tags.atom"},
+			{"https://medium.com/feed/@alice", ""},
+			{"https://mastodon.social/@bob.rss", ""},
+			{"https://www.youtube.com/feeds/videos.xml?channel_id=UCabc", ""},
+		} {
+			f := &fakeFetcher{responses: map[string]*fetch.Response{
+				tt.input: {StatusCode: http.StatusBadGateway},
+			}}
+			if tt.other != "" {
+				f.responses[tt.other] = atomResp("Tags from repo", "https://github.com/owner/repo/tags")
+			}
+			res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.input))
+			if !errors.Is(err, ErrUnreachable) {
+				t.Errorf("%s: err = %v, want ErrUnreachable", tt.input, err)
+			}
+			if len(res.Feeds) != 0 || !slices.Equal(f.gets, []string{tt.input}) {
+				t.Errorf("%s: Feeds = %v, gets = %v, want only the address, no feeds", tt.input, feedURLs(res.Feeds), f.gets)
+			}
+		}
+	})
+
+	t.Run("a network error", func(t *testing.T) {
+		f := &fakeFetcher{
+			errs: map[string]error{"https://medium.com/@alice": errors.New("connection refused")},
+			responses: map[string]*fetch.Response{
+				"https://medium.com/feed/@alice": rssResp("Stories by Alice on Medium", "https://medium.com/@alice"),
+			},
+		}
+		_, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, "https://medium.com/@alice"))
+		if err == nil || errors.Is(err, ErrUnreachable) {
+			t.Fatalf("err = %v, want the fetch error", err)
+		}
+		if !slices.Equal(f.gets, []string{"https://medium.com/@alice"}) {
+			t.Errorf("gets = %v, want only the page", f.gets)
+		}
+	})
+
+	t.Run("its feed names the app", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://medium.com/@alice":      forbidden,
+			"https://medium.com/feed/@alice": rssResp("Shared", "https://paperround.app/shared/x"),
+		}}
+		d := &Discoverer{Fetcher: f, AppSiteKey: "paperround.app"}
+		if _, err := d.Discover(context.Background(), mustURL(t, "https://medium.com/@alice")); !errors.Is(err, ErrAppLink) {
+			t.Errorf("err = %v, want ErrAppLink", err)
+		}
+	})
 }

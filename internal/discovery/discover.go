@@ -69,12 +69,13 @@ type Result struct {
 const (
 	SourcePage       = "page"        // a <link rel="alternate"> on the page
 	SourceCommonPath = "common path" // CommonFeedPaths
+	SourcePlatform   = "platform"    // the site's platform's own feeds (platformFeeds)
 )
 
 // CandidateCheck is the outcome of one candidate feed URL.
 type CandidateCheck struct {
 	Candidate Candidate
-	Source    string // "page" (a <link rel="alternate"> on the page) or "common path" (CommonFeedPaths)
+	Source    string // SourcePage, SourceCommonPath or SourcePlatform
 	FinalURL  string // after redirects; "" if the request failed or wasn't made
 	Status    int    // 0 if the request failed or wasn't made
 	Feed      string // the FeedInfo.URL it became; "" if not a feed
@@ -106,21 +107,29 @@ type Discoverer struct {
 // and so is a result on it (u redirected there, or a feed declares it as its
 // site).
 //
-// Failing to fetch u, or a non-2xx status, is an error. An HTML page is never
-// an error, however malformed or truncated: Discover uses whatever title,
-// description and feed links it could read, and when the page advertises no
-// feeds it tries CommonFeedPaths, unless its site key has a path (a site on
-// a shared host, see SiteKey).
+// Failing to fetch u is an error. An HTML page is never an error, however
+// malformed or truncated: Discover uses whatever title, description and feed
+// links it could read. When the page advertises no feeds it tries
+// CommonFeedPaths, or, when its site key has a path (a site on a shared
+// host, see SiteKey), the feeds its platform publishes for the site
+// (platformFeeds) instead, since common paths would find the platform's own.
+//
+// A non-2xx status is ErrUnreachable, unless u's site key has a path and one
+// of its platform's feeds parses (a platform's page can refuse servers while
+// its feeds answer): the result is then the feeds found, as if the first had
+// been looked up, with HomePage false.
 //
 // The site is the page's (SiteKey and SiteRoot of where u led), or for a
 // feed, that of its link, else of the feed itself. A page whose key has a
 // path takes the key of its first feed's link instead when that is another
-// key with a path on the same host.
+// key with a path on the same host. A site on a shared host is named as it
+// names itself (OwnName); its platform is shown apart (Platform).
 //
 // Result.Checked records every candidate. If ctx ends while candidates are
 // being checked, Discover returns the Site and the Checked so far alongside
-// the error; the lookup and import runners return on any error without
-// reading the result.
+// the error, and so does a non-2xx status whose platform feeds were tried;
+// the lookup and import runners return on any error without reading the
+// result.
 func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	if d.isAppSite(SiteKey(u)) {
 		return Result{}, fmt.Errorf("%w: %s", ErrAppLink, u)
@@ -129,9 +138,6 @@ func (d *Discoverer) Discover(ctx context.Context, u *url.URL) (Result, error) {
 	if err == nil && d.isAppSite(res.Site.Key) {
 		return Result{}, fmt.Errorf("%w: %s led to %s", ErrAppLink, u, res.Site.URL)
 	}
-	// A site on a shared host is named as it names itself; its platform
-	// is shown apart (Platform).
-	res.Site.Title = OwnName(res.Site.Key, res.Site.Title, res.Direct)
 	return res, err
 }
 
@@ -148,27 +154,14 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 		return Result{}, fmt.Errorf("discovery: fetching %s: %w", u, err)
 	}
 	if !ok2xx(resp.StatusCode) {
-		return Result{}, fmt.Errorf("%w: %s: status %d", ErrUnreachable, u, resp.StatusCode)
+		return d.refused(ctx, u, resp.StatusCode)
 	}
 
 	// The input is itself a feed.
 	if feedparse.Sniff(resp.Header.Get("Content-Type"), resp.Body) {
 		if f, err := feedparse.Parse(resp.URL, resp.Body); err == nil {
-			feed := feedInfo(resp.URL, f, "")
-			siteURL := resp.URL
-			if su, ok := channelLink(f.SiteURL); ok {
-				siteURL = su
-			}
-			site := SiteInfo{
-				Key:         SiteKey(siteURL),
-				URL:         SiteRoot(siteURL).String(),
-				Title:       f.Title,
-				Description: f.Description,
-			}
-			if site.Title == "" {
-				site.Title = site.Key
-			}
-			return Result{Site: site, Feeds: []FeedInfo{feed}, Direct: true}, nil
+			site := siteFromFeed(resp.URL, f.SiteURL, f.Title, f.Description)
+			return Result{Site: site, Feeds: []FeedInfo{feedInfo(resp.URL, f, "")}, Direct: true}, nil
 		}
 	}
 
@@ -185,28 +178,117 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 	}
 
 	// A site with a path in its key is one of many on a shared host, whose
-	// common paths would find the platform's own feed (medium.com/feed).
+	// common paths would find the platform's own feed (medium.com/feed);
+	// it tries the feeds its platform publishes for it instead.
 	candidates, source := info.Feeds, SourcePage
-	if len(candidates) == 0 && !hasPath(site.Key) {
-		source = SourceCommonPath
+	if len(candidates) == 0 {
 		base, _ := url.Parse(site.URL)
-		for _, p := range CommonFeedPaths {
-			ref, err := url.Parse(p)
-			if err != nil {
-				continue
+		if hasPath(site.Key) {
+			source = SourcePlatform
+			candidates = platformCandidates(base, site.Key)
+		} else {
+			source = SourceCommonPath
+			for _, p := range CommonFeedPaths {
+				ref, err := url.Parse(p)
+				if err != nil {
+					continue
+				}
+				candidates = append(candidates, Candidate{URL: base.ResolveReference(ref)})
 			}
-			candidates = append(candidates, Candidate{URL: base.ResolveReference(ref)})
 		}
 	}
 
 	feeds, checked, err := d.checkCandidates(ctx, candidates, source)
-	if err != nil {
-		return Result{Site: site, Checked: checked}, err
-	}
 	if len(feeds) > 0 {
 		site = feedSite(site, feeds[0])
 	}
+	site.Title = OwnName(site.Key, site.Title, false)
+	if err != nil {
+		return Result{Site: site, Checked: checked}, err
+	}
 	return Result{Site: site, Feeds: feeds, Checked: checked, HomePage: IsHomePage(u) || IsHomePage(resp.URL)}, nil
+}
+
+// refused is discover's result for u, whose page answered with a non-2xx
+// status: the feeds its platform publishes for its site, when any parses,
+// with the site found from the first as if it had been looked up (Direct
+// and HomePage false, since the page itself wasn't read); else
+// ErrUnreachable, with the candidates checked, if any. Only the page's
+// status is retried this way: a page that couldn't be fetched at all means
+// the host is likely down. Neither is a u that is one of those feeds: it
+// was asked for, not its site, so another of the site's feeds (an import's
+// releases.atom answered by tags.atom) mustn't stand in for it.
+func (d *Discoverer) refused(ctx context.Context, u *url.URL, status int) (Result, error) {
+	unreachable := fmt.Errorf("%w: %s: status %d", ErrUnreachable, u, status)
+	candidates := platformCandidates(SiteRoot(u), SiteKey(u))
+	if len(candidates) == 0 || isCandidate(u, candidates) {
+		return Result{}, unreachable
+	}
+	feeds, checked, err := d.checkCandidates(ctx, candidates, SourcePlatform)
+	if err != nil {
+		return Result{Checked: checked}, err
+	}
+	if len(feeds) == 0 {
+		return Result{Checked: checked}, unreachable
+	}
+	first := feeds[0]
+	feedURL, err := url.Parse(first.URL)
+	if err != nil {
+		return Result{Checked: checked}, fmt.Errorf("discovery: feed %s: %w", first.URL, err)
+	}
+	// A platform's candidate has no title of its own, so a feed titled by
+	// its URL has none (feedInfo).
+	title := first.Title
+	if title == first.URL {
+		title = ""
+	}
+	site := siteFromFeed(feedURL, first.SiteURL, title, first.Description)
+	return Result{Site: site, Feeds: feeds, Checked: checked}, nil
+}
+
+// platformCandidates are the feeds the platform publishes for the site with
+// root and key (platformFeeds), as candidates.
+func platformCandidates(root *url.URL, key string) []Candidate {
+	var candidates []Candidate
+	for _, raw := range platformFeeds(root, key) {
+		if c, err := url.Parse(raw); err == nil {
+			candidates = append(candidates, Candidate{URL: c})
+		}
+	}
+	return candidates
+}
+
+// isCandidate reports whether u is one of candidates, ignoring the
+// differences CanonicalFeedURL ignores.
+func isCandidate(u *url.URL, candidates []Candidate) bool {
+	want := CanonicalFeedURL(u)
+	for _, c := range candidates {
+		if CanonicalFeedURL(c.URL) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// siteFromFeed is the site of a feed found at feedURL whose link to its site
+// is link: that of its link (channelLink), else of the feed itself, named by
+// the feed's title as the site names itself (OwnName), else by its key.
+func siteFromFeed(feedURL *url.URL, link, title, description string) SiteInfo {
+	siteURL := feedURL
+	if su, ok := channelLink(link); ok {
+		siteURL = su
+	}
+	site := SiteInfo{
+		Key:         SiteKey(siteURL),
+		URL:         SiteRoot(siteURL).String(),
+		Title:       title,
+		Description: description,
+	}
+	if site.Title == "" {
+		site.Title = site.Key
+	}
+	site.Title = OwnName(site.Key, site.Title, true)
+	return site
 }
 
 // checkCandidates fetches and parses up to MaxCandidates candidates,

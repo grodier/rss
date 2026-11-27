@@ -175,6 +175,7 @@ An address on the app's own site (`-base-url`'s site key, such as a shared timel
 Meanwhile a lookup worker claims the row and runs `Discoverer.Discover`: fetch the URL; if it is itself a feed, that's the result.
 Otherwise read the page's title, description and `<link rel="alternate">` feeds, or, if there are none, try `CommonFeedPaths`, except on a site whose key has a path, where they'd find the platform's own feed (`medium.com/feed`).
 The site is the page's, or for a feed, that of its link, else of the feed itself: `SiteKey` and `SiteRoot` (`sitekeys.go`) add the path that names a site on a shared host, by a rule per platform (Medium, YouTube, Reddit, GitHub, Bluesky) or, on any other host, a first path segment `@name`.
+Everything discovery knows about a platform (its path rule, name, kind and title affixes) is one entry in the `platforms` table (`platforms.go`), which `rootPath`, `OwnName`, `Platform` and `KindOf` read.
 A page whose key has a path takes its first feed's site when that's another key with a path on the same host, so a YouTube `/@handle` page and its `/channel/ID` feed are one site.
 Such a site is named as it names itself (`OwnName`, applied by `Discover`: a page's "Alice – Medium" becomes "Alice", while a feed's title, already the feed's own name, loses only Medium's "Stories by … on Medium"), and wherever it's named its platform follows (`Platform`, the `siteName` template function: "Alice · Medium", "Bob · mastodon.social"), so the platform is never lost; "Read on" names the platform for an article on such a site (`readOnLabel`).
 Then fetch up to 15 candidates, 4 at a time, and keep up to 10 that parse.
@@ -250,7 +251,7 @@ The foot says when the site's feeds were last looked for and offers to look agai
 2. `internal/server/lookups.go` (`lookupCreateHandler`, `lookupHandler`) and `internal/psql/lookups.go`.
 3. `internal/lookup/lookup.go` (`Runner`).
    The seed list: see "Seed list and Discover's catalog" under "Admin".
-4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`), `normalize.go` (`ParseInput`, `CanonicalFeedURL`) and `sitekeys.go` (`SiteKey`, `SiteRoot`, `IsHomePage`).
+4. `internal/discovery/discover.go` (`Discover`), `page.go` (`ParsePage`), `normalize.go` (`ParseInput`, `CanonicalFeedURL`) `sitekeys.go` (`SiteKey`, `SiteRoot`, `IsHomePage`) and `platforms.go` (`platforms`, one entry per shared host).
 5. `internal/feedparse/feedparse.go` (`Sniff`, `Parse`), then `internal/psql/discoveries.go` (`Save`).
 6. `internal/server/sites.go` (`siteHandler`, `siteFeedRows`, `sitePosts`), `internal/psql/feeds.go` (`SiteFeedFacts`) and `articles.go` (`ListByFeeds`), and `internal/ui/templates/site.html`.
 

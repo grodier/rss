@@ -80,94 +80,15 @@ func sitePath(u *url.URL) string {
 	return strings.ToLower(path)
 }
 
-// githubReserved are first path segments on github.com that are GitHub's own
-// pages, not an owner's.
-var githubReserved = map[string]bool{
-	"orgs": true, "topics": true, "features": true, "marketplace": true,
-	"explore": true, "sponsors": true, "settings": true, "about": true,
-	"login": true, "site": true, "collections": true, "trending": true,
-}
-
 // rootPath returns the path of u's site root on a shared host, in u's case
 // ("/@Alice" for "https://medium.com/@Alice/a-post"), and whether the
 // platform's names in it are case-sensitive; "" when u belongs to its host's
-// own site. A host with its own rule uses only that rule; every other host
-// uses the @name rule (Mastodon and the fediverse, Threads, …).
+// own site. A host with its own rule (platforms) uses only that rule; every
+// other host uses the @name rule (atNameRootPath).
 func rootPath(u *url.URL) (path string, keepCase bool) {
 	segs := strings.Split(strings.Trim(u.Path, "/"), "/")
-	seg := func(i int) string {
-		if i < len(segs) {
-			return segs[i]
-		}
-		return ""
+	if p, ok := platformFor(keyHost(u)); ok && p.rootPath != nil {
+		return p.rootPath(u, segs)
 	}
-
-	switch keyHost(u) {
-	case "medium.com":
-		// /@name/…, /feed/@name
-		if isAtName(seg(0)) {
-			return "/" + seg(0), false
-		}
-		if seg(0) == "feed" && isAtName(seg(1)) {
-			return "/" + seg(1), false
-		}
-	case "youtube.com":
-		// /@handle/…, /channel/ID/…, /feeds/videos.xml?channel_id=ID,
-		// /c/name/…, /user/name/…
-		switch {
-		case isAtName(seg(0)):
-			return "/" + seg(0), false
-		case seg(0) == "channel" && seg(1) != "":
-			return "/channel/" + seg(1), true
-		case seg(0) == "feeds" && seg(1) == "videos.xml" && len(segs) == 2:
-			if id := u.Query().Get("channel_id"); id != "" && !strings.Contains(id, "/") {
-				return "/channel/" + id, true
-			}
-		case (seg(0) == "c" || seg(0) == "user") && seg(1) != "":
-			return "/" + seg(0) + "/" + seg(1), false
-		}
-	case "reddit.com":
-		// /r/name/… (/r/name/.rss, /r/name.rss), /user/name/…, /u/name/…
-		name := strings.TrimSuffix(seg(1), ".rss")
-		switch {
-		case name == "":
-		case seg(0) == "r":
-			return "/r/" + name, false
-		case seg(0) == "user" || seg(0) == "u":
-			return "/user/" + name, false
-		}
-	case "github.com":
-		// /owner/repo/…, /owner, /owner.atom
-		owner := seg(0)
-		if len(segs) == 1 {
-			owner = strings.TrimSuffix(owner, ".atom")
-		}
-		switch {
-		case owner == "" || githubReserved[strings.ToLower(owner)]:
-		case seg(1) != "":
-			return "/" + owner + "/" + seg(1), false
-		default:
-			return "/" + owner, false
-		}
-	case "bsky.app":
-		// /profile/handle/… (/profile/handle/rss)
-		if seg(0) == "profile" && seg(1) != "" {
-			return "/profile/" + seg(1), false
-		}
-	default:
-		// /@name/…, /@name.rss, /@name.atom
-		name := seg(0)
-		if len(segs) == 1 {
-			name = strings.TrimSuffix(strings.TrimSuffix(name, ".rss"), ".atom")
-		}
-		if isAtName(name) {
-			return "/" + name, false
-		}
-	}
-	return "", false
-}
-
-// isAtName reports whether seg is a path segment naming an account, "@name".
-func isAtName(seg string) bool {
-	return len(seg) > 1 && seg[0] == '@'
+	return atNameRootPath(u, segs)
 }

@@ -346,8 +346,7 @@ type feedInspectView struct {
 // of the document and what a refresh would do with each item. It saves
 // nothing: no articles, no fetch outcome, no validators.
 func (s *Server) feedInspectHandler(w http.ResponseWriter, r *http.Request) {
-	feedID, ok := s.uuidParam(w, r, "id")
-	if !ok {
+	if _, ok := s.uuidParam(w, r, "id"); !ok {
 		return
 	}
 
@@ -357,13 +356,13 @@ func (s *Server) feedInspectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	feed, err := s.services.FeedService.GetByID(r.Context(), feedID)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
+	feed, ok := s.visibleFeed(w, r)
+	if !ok {
+		return
+	}
+	// A newsletter is never fetched, its owner's included.
+	if feed.IsNewsletter() {
+		s.notFoundResponse(w, r)
 		return
 	}
 
@@ -878,22 +877,24 @@ type pageInspectView struct {
 // its metadata tags, its JSON-LD and what enrichment would store from it. It
 // saves nothing.
 func (s *Server) articlePageInspectHandler(w http.ResponseWriter, r *http.Request) {
-	id, ok := s.uuidParam(w, r, "id")
+	article, ok := s.visibleArticle(w, r)
 	if !ok {
-		return
-	}
-
-	article, err := s.services.ArticleService.GetByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, rss.ErrNoRecord) {
-			s.notFoundResponse(w, r)
-		} else {
-			s.serverErrorHTML(w, r, err)
-		}
 		return
 	}
 	// The article panel shows no Inspect page button then.
 	if article.URL == "" {
+		s.notFoundResponse(w, r)
+		return
+	}
+	// A newsletter's links are personal and never fetched (see enrichment),
+	// its owner's included.
+	userID, _ := s.authenticatedUserID(r)
+	feed, err := s.services.FeedService.GetVisible(r.Context(), userID, article.FeedID)
+	if err != nil {
+		s.serverErrorHTML(w, r, err)
+		return
+	}
+	if feed.IsNewsletter() {
 		s.notFoundResponse(w, r)
 		return
 	}
@@ -981,6 +982,11 @@ func (s *Server) siteDiscoverHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.serverErrorHTML(w, r, err)
 		}
+		return
+	}
+	// The newsletters' internal site has no home page to discover.
+	if site.Host == rss.NewsletterSiteHost {
+		s.notFoundResponse(w, r)
 		return
 	}
 	feeds, err := s.services.FeedService.ListBySite(r.Context(), site.ID)

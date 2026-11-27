@@ -254,6 +254,7 @@ users ──< user_sessions
 users ──< user_tokens
 users ──< user_features (one row per feature a reader has beyond the base app)
 users ──< newsletter_addresses (one current, and the retired ones still receiving)
+users ──< feeds (owner_id: a reader's newsletter feeds, all on the one internal site, host "newsletters")
 waitlist (no foreign keys: an entry is an address, not an account)
 waitlist ──< invites >── users   (both nullable: the entry it was sent to, the account made with it)
 
@@ -317,15 +318,21 @@ site_key_rules   (one row: the site-key rules version whose re-key last finished
   Resending a bound invite replaces its `token_hash` and `expires_at` in place, so it keeps its wave and history and the old link stops working.
   A waitlist entry is waiting while it has no pending invite (unredeemed, unrevoked, unexpired), so one whose invite expired or was revoked can be invited again; the admin's tabs are conditions on that (`waitlistTabs` in `internal/psql/waitlist.go`), not a column.
 - **`newsletter_addresses`:** a reader's address for newsletters is `local_part@<-newsletter-domain>`; a partial unique index allows one current address (`retired_at IS NULL`) per reader, and `local_part` is unique across all of them, retired ones included, ignoring case. Get a new address retires the current one, which keeps receiving for 30 days (`rss.NewsletterRetiredFor`).
+- **Newsletter feeds are private:** a feed with an `owner_id` is that reader's newsletter feed, an ordinary `feeds` row so subscriptions, tags, timelines, reads, saves and stars work unchanged, which no one else may see; every newsletter feed belongs to one internal site, host `newsletters` (`rss.NewsletterSiteHost`), made by its migration, and its URL is `newsletter:<feed id>`, which `discovery.ParseInput` refuses.
+  Another reader can't reach one by ID: `FeedRepository.GetVisible` and `ArticleRepository.GetVisible` return `rss.ErrNoRecord` for it, and every reader route that takes a feed or article ID loads it through them (the server's `visibleFeed` and `visibleArticle`), so the feed and article pages, follow, unfollow, edit, read, save, star and image-failed are 404s.
+  It's never fetched: `feedDue` (background refresh and the Overview's count) and `RequestRefresh` leave it out, `ingest.Refresher` refuses it (`ErrNewsletter`), and so do the Refresh button and the debug inspectors, its owner's included; enrichment never fetches its links (`enrichWanted`, `queueEnrichBacklog`), since they're personal and fetching one can count as an open or a click.
+  The internal site is never fetched or checked: `siteIconDue` leaves it out, `upsertSite` refuses its host, and discovery refuses a host that keys to a single label (`validHost`, as `www.newsletters` would), so the web can't produce it; its page, the discovery inspector and the admin's site page and actions are 404s.
+  The admin never sees a newsletter feed (`AdminFeedRepository.Feed` is `rss.ErrNoRecord`, so its page and every action are 404s), and `ArticleDebug` leaves out other readers' copies.
+  Any new path that reaches feeds or articles across readers must refuse them too, with a test.
 - **`user_features`:** a row means the reader has the feature; revoking deletes it, so the admin's audit log (`user.feature_grant`, `user.feature_revoke`) is the history, and `source` says who granted it (an admin now; billing later).
   Only the admin writes it (`AdminUserRepository.SetFeature`), and revoking deletes nothing the feature made.
 - **`email_daily_counts`:** one row per UTC day with how many emails were queued, because the outbox deletes finished emails after 7 days and a month can't be counted from `emails`; `enqueue` inserts the email and increments its day in one statement, so the two never disagree.
   `EmailRepository.Usage` counts the last 24 hours from `emails` (plus anything still pending) and the month from this table; rows are never deleted (one a day).
 - **No sweepers:** `authenticate` deletes an idle `user_sessions` row when it sees it and login deletes the user's idle rows; `TokenRepository.Create` and the admin's `AdminUserRepository.SendLink` delete the user's expired tokens first; the mail runner deletes finished emails after 7 days; scs deletes expired sessions.
 
-Deleting a site cascades to its feeds and their articles, `discover_feeds` rows, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions`, `user_tokens`, `user_features` and `newsletter_addresses`, and leaves their `emails`.
+Deleting a site cascades to its feeds and their articles, `discover_feeds` rows, subscriptions, reads, saves and enrich jobs, and to its `site_icons` row, and clears `lookups.site_id` and `import_feeds.feed_id`; deleting an article deletes its saves, stars, reads, enrich job and `timeline_entries` rows; deleting a user cascades to their subscriptions, reads, `timeline_marks` row, `timeline_lines` and `timeline_entries` rows, saves, stars, tags, timelines, imports (and their `import_feeds`), `user_sessions`, `user_tokens`, `user_features`, `newsletter_addresses` and newsletter feeds (`feeds.owner_id`, and with them their articles), and leaves their `emails`.
 Deleting a subscription (unsubscribing) deletes its name, its `subscription_tags` and its `timeline_feeds` rows, so subscribing again starts clean, except for the reader's `timeline_entries` rows for the feed, which stay until a visit trims them; deleting a tag removes it from subscriptions and timelines; deleting a timeline deletes its `timeline_tags`, `timeline_feeds` and `timeline_lines` rows.
-Nothing deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
+Nothing else deletes sites, feeds or articles yet: they stay even when no one subscribes to them anymore.
 
 One table isn't in the migrations: goose's `goose_db_version`, the versions applied.
 

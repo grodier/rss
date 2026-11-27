@@ -50,7 +50,10 @@ type Config struct {
 
 // FeedStore is the feed persistence the server depends on.
 type FeedStore interface {
-	GetByID(ctx context.Context, id string) (rss.Feed, error)
+	// GetVisible returns feed id as reader userID sees it: rss.ErrNoRecord
+	// for another reader's newsletter feed, as for no feed. Every route that
+	// takes a feed ID uses it.
+	GetVisible(ctx context.Context, userID, id string) (rss.Feed, error)
 	ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error)
 	// SiteFeedFacts returns, by feed ID, each of the site's feeds' catalog
 	// section, if any, and newest article.
@@ -167,7 +170,10 @@ type FeedRefresher interface {
 // ArticleStore reads saved articles, and records feed images that fail to
 // load.
 type ArticleStore interface {
-	GetByID(ctx context.Context, id string) (rss.Article, error)
+	// GetVisible returns article id as reader userID sees it: rss.ErrNoRecord
+	// for an article in another reader's newsletter feed, as for no article.
+	// Every route that takes an article ID uses it.
+	GetVisible(ctx context.Context, userID, id string) (rss.Article, error)
 	// ListByFeed returns a page of a feed's articles. Summary and Content
 	// are left empty.
 	ListByFeed(ctx context.Context, feedID string, before rss.ArticleCursor, limit int) ([]rss.Article, error)

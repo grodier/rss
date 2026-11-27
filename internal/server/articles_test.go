@@ -43,13 +43,13 @@ func articleServer(t *testing.T, article rss.Article, articleErr, feedErr, siteE
 		ReadService:         &fakeReadStore{},
 		SaveService:         &fakeSaveStore{},
 		SubscriptionService: &fakeSubscriptionStore{},
-		ArticleService: &fakeArticleStore{getByIDFn: func(ctx context.Context, id string) (rss.Article, error) {
+		ArticleService: &fakeArticleStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Article, error) {
 			if articleErr != nil {
 				return rss.Article{}, articleErr
 			}
 			return article, nil
 		}},
-		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+		FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 			if feedErr != nil {
 				return rss.Feed{}, feedErr
 			}
@@ -84,7 +84,7 @@ func TestArticleHandler(t *testing.T) {
 		PublishedAt: time.Date(2024, time.March, 2, 10, 5, 0, 0, time.UTC),
 	}
 	s := articleServer(t, article, nil, nil, nil)
-	s.services.ArticleService.(*fakeArticleStore).getByIDFn = func(ctx context.Context, id string) (rss.Article, error) {
+	s.services.ArticleService.(*fakeArticleStore).getVisibleFn = func(ctx context.Context, _, id string) (rss.Article, error) {
 		gotID = id
 		article.ID, article.FeedID = testArticleID, testFeedID
 		return article, nil
@@ -96,7 +96,7 @@ func TestArticleHandler(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	if gotID != testArticleID {
-		t.Errorf("GetByID(%q), want %q", gotID, testArticleID)
+		t.Errorf("GetVisible(%q), want %q", gotID, testArticleID)
 	}
 	body := rr.Body.String()
 	assertBodyContains(t, body,

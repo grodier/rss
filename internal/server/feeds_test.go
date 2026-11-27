@@ -81,7 +81,7 @@ func feedServerWithArticles(t *testing.T, siteErr error, articles ArticleStore) 
 		SaveService:         &fakeSaveStore{},
 		ArticleService:      articles,
 		FeedService: &fakeFeedStore{
-			getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 				return rss.Feed{
 					ID:          id,
 					Title:       "Example Feed Title",
@@ -607,7 +607,7 @@ func TestFeedHandlerStoreErrors(t *testing.T) {
 
 func TestFeedHandlerNotFound(t *testing.T) {
 	s := newTestServerWith(t, Services{FeedService: &fakeFeedStore{
-		getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+		getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 			return rss.Feed{}, rss.ErrNoRecord
 		},
 	}})
@@ -1087,7 +1087,7 @@ func TestFeedHandlerRefreshControls(t *testing.T) {
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
 				ArticleService:      &fakeArticleStore{},
-				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID, LastFetched: tt.lastFetched, PostsPerWeek: 3.4}, nil
 				}},
 				SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
@@ -1137,7 +1137,7 @@ func TestFeedHandlerFetchStatus(t *testing.T) {
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
 				ArticleService:      &fakeArticleStore{},
-				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 					return rss.Feed{
 						ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID,
 						LastAttempt: attempt, NextFetch: next, ConsecutiveFailures: tt.failures,
@@ -1169,7 +1169,7 @@ func TestFeedHandlerGoneFeed(t *testing.T) {
 		ReadService:         &fakeReadStore{},
 		SaveService:         &fakeSaveStore{},
 		ArticleService:      &fakeArticleStore{},
-		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+		FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 			return rss.Feed{
 				ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID,
 				LastAttempt: time.Date(2026, 1, 2, 15, 4, 0, 0, time.UTC), NextFetch: time.Date(2026, 1, 3, 9, 30, 0, 0, time.UTC),
@@ -1206,7 +1206,7 @@ func TestFeedHandlerEmptyTitleShowsURL(t *testing.T) {
 				ReadService:         &fakeReadStore{},
 				SaveService:         &fakeSaveStore{},
 				ArticleService:      &fakeArticleStore{},
-				FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+				FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 					return rss.Feed{ID: id, Title: tt.title, Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
 				}},
 				SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {
@@ -1251,7 +1251,7 @@ func TestFeedHandlerRefreshRequest(t *testing.T) {
 				SaveService:         &fakeSaveStore{},
 				ArticleService:      &fakeArticleStore{},
 				FeedService: &fakeFeedStore{
-					getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+					getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 						f := tt.feed
 						f.ID, f.Title, f.Url, f.SiteID = id, "T", "https://example.com/feed.xml", testSiteID
 						return f, nil
@@ -1351,7 +1351,7 @@ func refreshServer(t *testing.T, feed rss.Feed, getErr error, ref *fakeRefresher
 	t.Helper()
 	feed.ID = testFeedID
 	return newTestServerWith(t, Services{
-		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+		FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 			if getErr != nil {
 				return rss.Feed{}, getErr
 			}
@@ -1399,7 +1399,7 @@ func TestFeedRefreshHandler(t *testing.T) {
 				t.Errorf("flash = %q, want %q", flash, tt.wantFlash)
 			}
 			if len(ref.calls) != 1 || ref.calls[0].ID != testFeedID || ref.calls[0].Url != "https://example.com/feed.xml" {
-				t.Errorf("Refresh calls = %+v, want one with the feed from GetByID", ref.calls)
+				t.Errorf("Refresh calls = %+v, want one with the feed from GetVisible", ref.calls)
 			}
 		})
 	}
@@ -1410,7 +1410,7 @@ func TestFeedRefreshHandlerNotFound(t *testing.T) {
 		getCalled := false
 		ref := refreshReturns(rss.FetchResult{}, nil)
 		s := newTestServerWith(t, Services{
-			FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 				getCalled = true
 				return rss.Feed{}, nil
 			}},
@@ -1419,7 +1419,7 @@ func TestFeedRefreshHandlerNotFound(t *testing.T) {
 		rr, _ := postRefresh(t, s, "user-1", "abc")
 		assertNotFoundHTML(t, rr)
 		if getCalled {
-			t.Error("GetByID called for invalid id")
+			t.Error("GetVisible called for invalid id")
 		}
 	})
 	t.Run("no record", func(t *testing.T) {
@@ -1571,7 +1571,7 @@ func subscriptionServer(t *testing.T, feed rss.Feed, getErr error, subs *fakeSub
 	t.Helper()
 	feed.ID = testFeedID
 	return newTestServerWith(t, Services{
-		FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+		FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 			if getErr != nil {
 				return rss.Feed{}, getErr
 			}

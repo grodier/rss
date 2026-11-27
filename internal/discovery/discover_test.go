@@ -254,6 +254,9 @@ func TestDiscoverInputIsFeed(t *testing.T) {
 	}{
 		{"site link", "https://blog.example.org/posts", "blog.example.org", "https://blog.example.org/", "X Feed"},
 		{"no site link", "", "feeds.example.net", "https://feeds.example.net/", ""},
+		// It would key to rss.NewsletterSiteHost, the newsletters' site.
+		{"site link to an invalid host", "http://www.newsletters/", "feeds.example.net", "https://feeds.example.net/", "X Feed"},
+		{"site link to an IP address", "http://192.0.2.1/", "feeds.example.net", "https://feeds.example.net/", "X Feed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

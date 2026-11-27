@@ -58,6 +58,14 @@ func newTestServerConfig(t *testing.T, cfg Config, svc Services) *Server {
 	if svc.SubscriptionService == nil {
 		svc.SubscriptionService = &fakeSubscriptionStore{}
 	}
+	// Every route with a feed's or an article's ID checks that the reader
+	// may see it; a test that doesn't care gets one they can.
+	if svc.FeedService == nil {
+		svc.FeedService = &fakeFeedStore{}
+	}
+	if svc.ArticleService == nil {
+		svc.ArticleService = &fakeArticleStore{}
+	}
 	// Discover's search reads saved articles; a test that doesn't care gets
 	// a reader with none.
 	if svc.SaveService == nil {

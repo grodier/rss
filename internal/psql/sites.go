@@ -20,14 +20,24 @@ func NewSiteRepository(db *sql.DB) *SiteRepository {
 	return &SiteRepository{DB: db}
 }
 
+// errReservedSite is upsertSite's refusal of the newsletters' internal
+// site.
+var errReservedSite = errors.New("psql: the newsletters' site is reserved")
+
 // upsertSite inserts the site or updates it by host and returns its ID. An
 // empty title or description doesn't overwrite a known one. Only details
 // read from the site's home page (fromHome, discovery.Result.HomePage)
 // replace an existing site's address, title and description: details read
 // from a feed or another page (an article, a Medium author's page) describe
 // a new site, but an existing one keeps its own, gaining only a title or
-// description it lacks.
+// description it lacks. The newsletters' internal site
+// (rss.NewsletterSiteHost) is refused with errReservedSite: discovery never
+// produces its host, and nothing from the web may change it or add feeds to
+// it.
 func upsertSite(ctx context.Context, q querier, s rss.Site, fromHome bool) (string, error) {
+	if s.Host == rss.NewsletterSiteHost {
+		return "", errReservedSite
+	}
 	stmt := `INSERT INTO sites (host, url, title, description)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (host) DO UPDATE SET
@@ -235,9 +245,10 @@ func (r *SiteRepository) MatchForSignup(ctx context.Context, candidates []string
 }
 
 // siteIconDue is true for a site ClaimIconCheck may claim: its check is
-// due, and it's never been checked or has a subscribed feed. The admin's
-// Overview counts the icon queue with it (AdminOverviewRepository.Queues).
-const siteIconDue = `icon_next_check_at <= now()
+// due, it isn't the newsletters' internal site, and it's never been checked
+// or has a subscribed feed. The admin's Overview counts the icon queue with
+// it (AdminOverviewRepository.Queues).
+const siteIconDue = `icon_next_check_at <= now() AND host <> '` + rss.NewsletterSiteHost + `'
 	AND (icon_checked_at IS NULL
 	     OR EXISTS (SELECT 1 FROM feeds f JOIN subscriptions s ON s.feed_id = f.id
 	                WHERE f.site_id = sites.id))`

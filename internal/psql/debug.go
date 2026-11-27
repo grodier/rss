@@ -137,8 +137,9 @@ func (r *DebugRepository) ArticlesByExternalID(ctx context.Context, feedID strin
 const maxArticleCopies = 20
 
 // ArticleDebug returns the article's enrich job, its copies in other feeds
-// (same non-empty canonical_url, oldest first, at most 20) and userID's read
-// and save times. Missing rows are zero values, not errors.
+// (same non-empty canonical_url, oldest first, at most 20, leaving out
+// other readers' newsletter feeds) and userID's read and save times.
+// Missing rows are zero values, not errors.
 func (r *DebugRepository) ArticleDebug(ctx context.Context, userID, articleID string) (rss.ArticleDebug, error) {
 	var d rss.ArticleDebug
 
@@ -161,9 +162,10 @@ func (r *DebugRepository) ArticleDebug(ctx context.Context, userID, articleID st
 		JOIN feeds f ON f.id = a.feed_id
 		JOIN articles me ON me.id = $1
 		WHERE me.canonical_url <> '' AND a.canonical_url <> '' AND a.canonical_url = me.canonical_url AND a.id <> me.id
+		  AND (f.owner_id IS NULL OR f.owner_id = $3)
 		ORDER BY a.created_at, a.id
 		LIMIT $2`
-	rows, err := r.DB.QueryContext(ctx, copiesStmt, articleID, maxArticleCopies)
+	rows, err := r.DB.QueryContext(ctx, copiesStmt, articleID, maxArticleCopies, userID)
 	if err != nil {
 		return rss.ArticleDebug{}, err
 	}

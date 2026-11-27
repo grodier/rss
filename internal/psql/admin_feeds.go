@@ -182,7 +182,9 @@ func (r *AdminFeedRepository) ListFeeds(ctx context.Context, q rss.AdminFeedQuer
 	return out, rows.Err()
 }
 
-// Feed returns feed id's page, or rss.ErrNoRecord.
+// Feed returns feed id's page, or rss.ErrNoRecord, also for a reader's
+// newsletter feed: the admin never sees one, so its page and every feed
+// action are a 404.
 func (r *AdminFeedRepository) Feed(ctx context.Context, id string) (rss.AdminFeed, error) {
 	stmt := `SELECT ` + adminFeedRowColumns + `,
 			s.id, s.url, s.title, s.description, s.created_at, s.updated_at,
@@ -192,7 +194,7 @@ func (r *AdminFeedRepository) Feed(ctx context.Context, id string) (rss.AdminFee
 			(SELECT min(j.created_at) FROM enrich_jobs j JOIN articles a ON a.id = j.article_id WHERE a.feed_id = f.id),
 			f.categories
 		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
-		WHERE f.id = $1`
+		WHERE f.id = $1 AND f.owner_id IS NULL`
 
 	var feed rss.AdminFeed
 	var newest, oldestJob sql.NullTime

@@ -110,6 +110,9 @@ var (
 	ErrNotFeed = errors.New("ingest: not a feed")
 	// ErrGone: the feed answered 410 Gone and is no longer fetched.
 	ErrGone = errors.New("ingest: feed gone")
+	// ErrNewsletter: the feed is a reader's newsletter feed, whose articles
+	// arrive by email; it's never fetched.
+	ErrNewsletter = errors.New("ingest: newsletter feeds aren't fetched")
 )
 
 // Refresher fetches feeds and saves their articles.
@@ -135,8 +138,13 @@ type Refresher struct {
 // and returns an error wrapping ErrGone. Neither is recorded if ctx was
 // canceled (shutdown or a disconnected user). If recording fails, its error is
 // joined to the fetch error. Any other error is from Store.SaveFetch or
-// Store.RecordNotModified and is not recorded as a feed failure.
+// Store.RecordNotModified and is not recorded as a feed failure. A
+// newsletter feed (rss.Feed.IsNewsletter) is refused with ErrNewsletter,
+// without fetching or recording anything.
 func (r *Refresher) Refresh(ctx context.Context, feed rss.Feed) (rss.FetchResult, error) {
+	if feed.IsNewsletter() {
+		return rss.FetchResult{}, ErrNewsletter
+	}
 	resp, update, articles, err := r.fetch(ctx, feed)
 	if errors.Is(err, ErrGone) {
 		return rss.FetchResult{}, r.record(ctx, err, func(ctx context.Context) error {

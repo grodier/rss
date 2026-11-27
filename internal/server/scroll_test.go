@@ -325,7 +325,7 @@ func TestBusyFormsMarkup(t *testing.T) {
 			ReadService:         &fakeReadStore{},
 			SaveService:         &fakeSaveStore{},
 			ArticleService:      &fakeArticleStore{},
-			FeedService: &fakeFeedStore{getByIDFn: func(ctx context.Context, id string) (rss.Feed, error) {
+			FeedService: &fakeFeedStore{getVisibleFn: func(ctx context.Context, _, id string) (rss.Feed, error) {
 				return rss.Feed{ID: id, Title: "T", Url: "https://example.com/feed.xml", SiteID: testSiteID}, nil
 			}},
 			SiteService: &fakeSiteStore{getByIDFn: func(ctx context.Context, id string) (rss.Site, error) {

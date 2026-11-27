@@ -85,6 +85,23 @@ func (r *ArticleRepository) GetByID(ctx context.Context, id string) (rss.Article
 	return a, nil
 }
 
+// GetVisible returns article id as reader userID sees it: rss.ErrNoRecord
+// if there's no such article or it's in another reader's newsletter feed
+// (see FeedRepository.GetVisible). Every reader route that takes an article
+// ID uses it, never GetByID.
+func (r *ArticleRepository) GetVisible(ctx context.Context, userID, id string) (rss.Article, error) {
+	stmt := `SELECT ` + qualifiedArticleColumns + `
+		FROM articles a
+		JOIN feeds f ON f.id = a.feed_id
+		WHERE a.id = $1 AND ` + feedVisible
+
+	a, err := scanArticle(r.DB.QueryRowContext(ctx, stmt, id, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return rss.Article{}, rss.ErrNoRecord
+	}
+	return a, err
+}
+
 // ListByFeed returns up to limit of feedID's articles, newest first by
 // published date (else created date) then ID, starting after before (from
 // the start if before is zero). Summary and Content are left empty.

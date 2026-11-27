@@ -397,7 +397,7 @@ func TestFeedHandlerDebugPanel(t *testing.T) {
 	serve := func(t *testing.T, cfg Config, debugOn bool, store DebugStore) string {
 		t.Helper()
 		s := feedServer(t, nil)
-		s.services.FeedService = &fakeFeedStore{getByIDFn: func(_ context.Context, id string) (rss.Feed, error) {
+		s.services.FeedService = &fakeFeedStore{getVisibleFn: func(_ context.Context, _, id string) (rss.Feed, error) {
 			return rss.Feed{ID: id, SiteID: testSiteID, Url: "https://example.com/feed.xml", Title: "Example Feed Title",
 				LastError: "<script>alert(1)</script>", ConsecutiveFailures: 1, NextFetch: time.Now().Add(time.Hour)}, nil
 		}}
@@ -630,7 +630,7 @@ func inspectServer(t *testing.T, fetcher *fakeFetcher) (*Server, *fakeRefresher)
 	}}
 	s := newTestServerConfig(t, debugConfig, Services{
 		FeedService: &fakeFeedStore{
-			getByIDFn: func(_ context.Context, id string) (rss.Feed, error) {
+			getVisibleFn: func(_ context.Context, _, id string) (rss.Feed, error) {
 				if id != testFeedID {
 					return rss.Feed{}, rss.ErrNoRecord
 				}
@@ -1263,7 +1263,7 @@ func pageInspectServer(t *testing.T, a rss.Article, fetcher *fakeFetcher) *Serve
 	t.Helper()
 	a.ID, a.FeedID = testArticleID, testFeedID
 	return newTestServerConfig(t, debugConfig, Services{
-		ArticleService: &fakeArticleStore{getByIDFn: func(_ context.Context, id string) (rss.Article, error) {
+		ArticleService: &fakeArticleStore{getVisibleFn: func(_ context.Context, _, id string) (rss.Article, error) {
 			if id != testArticleID {
 				return rss.Article{}, rss.ErrNoRecord
 			}
@@ -1472,8 +1472,8 @@ func TestSiteDiscoverHandler(t *testing.T) {
 func TestPageInspectorsDebugOff(t *testing.T) {
 	untouched := func(t *testing.T) Services {
 		return Services{
-			ArticleService: &fakeArticleStore{getByIDFn: func(context.Context, string) (rss.Article, error) {
-				t.Error("ArticleService.GetByID called")
+			ArticleService: &fakeArticleStore{getVisibleFn: func(context.Context, string, string) (rss.Article, error) {
+				t.Error("ArticleService.GetVisible called")
 				return rss.Article{}, nil
 			}},
 			SiteService: &fakeSiteStore{getByIDFn: func(context.Context, string) (rss.Site, error) {

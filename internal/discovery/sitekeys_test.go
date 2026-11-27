@@ -144,6 +144,7 @@ func TestFeedSiteKey(t *testing.T) {
 		{"from the URL without a link", "", "https://medium.com/feed/@alice", "medium.com/@alice", "https://medium.com/@alice"},
 		{"an ordinary feed", "https://www.example.com/blog/", "https://www.example.com/feed.xml", "example.com", "https://www.example.com/"},
 		{"a link that isn't an address", "not a link", "https://example.com/feed.xml", "example.com", "https://example.com/"},
+		{"a link to an invalid host", "http://www.newsletters/", "https://example.com/feed.xml", "example.com", "https://example.com/"},
 		{"neither", "", "", "", ""},
 	}
 	for _, tt := range tests {

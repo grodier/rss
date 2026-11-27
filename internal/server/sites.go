@@ -29,6 +29,11 @@ func (s *Server) siteHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// The newsletters' internal site has no page: its feeds are private.
+	if site.Host == rss.NewsletterSiteHost {
+		s.notFoundResponse(w, r)
+		return
+	}
 
 	feeds, err := s.services.FeedService.ListBySite(r.Context(), site.ID)
 	if err != nil {

@@ -55,6 +55,13 @@ func TestParseInput(t *testing.T) {
 		{"exa_mple.com", ""},
 		{strings.Repeat("a", 64) + ".com", ""},
 		{long + "a", ""},
+		// Newsletters: their feeds' URLs, and hosts that would key to their
+		// internal site (rss.NewsletterSiteHost) or another single label.
+		{"newsletter:0b7c6f9e-2f4d-4a0e-9d55-3c1f2a8b9e71", ""},
+		{"newsletters", ""},
+		{"www.newsletters", ""},
+		{"https://WWW.newsletters/", ""},
+		{"www.com", ""},
 	}
 	for _, tt := range tests {
 		got, err := ParseInput(tt.in)

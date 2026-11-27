@@ -15,6 +15,39 @@ export function enhanceRows(root: ParentNode): void {
   enhanceShare(root);
 }
 
+// What opening an article keeps in its history entry: its row's id, and
+// the row's distance from the top of the screen.
+type RowState = { row: string; top: number };
+
+// restoreRow scrolls to the row of list that the URL's fragment names:
+// back where it was on the screen when its article was opened (the
+// entry's RowState), else to the top, clear of the sticky bars (the row's
+// scroll-margin, rows.css). A web font arriving later can move the row, so
+// it scrolls again once the fonts are ready, unless the reader has
+// scrolled since.
+function restoreRow(list: Element): void {
+  const id = decodeURIComponent(location.hash.slice(1));
+  const row = id ? document.getElementById(id) : null;
+  if (!row || row.parentElement !== list || !row.matches(".article-row")) return;
+  const state = history.state as Partial<RowState> | null;
+  const top = state?.row === id && typeof state.top === "number" ? state.top : null;
+  const scroll = () => {
+    if (top === null) row.scrollIntoView({ block: "start" });
+    else scrollTo(0, scrollY + row.getBoundingClientRect().top - top);
+    return scrollY;
+  };
+  const at = scroll();
+  document.fonts?.ready.then(() => {
+    if (scrollY === at) scroll();
+  });
+}
+
+// scrollMargin is the top scroll-margin of list's rows, in pixels.
+function scrollMargin(list: Element): number {
+  const row = list.querySelector(":scope > .article-row");
+  return (row && parseFloat(getComputedStyle(row).scrollMarginTop)) || 0;
+}
+
 // How long a page may take to load before it counts as failed: well past a
 // slow phone connection's few seconds for a page of rows.
 const LOAD_TIMEOUT = 20_000;
@@ -31,7 +64,9 @@ const pagerText = new WeakMap<HTMLAnchorElement, { loading: string; failed: stri
 // source of truth: its href never changes, a press with a modifier always
 // follows it, and a retry that gets anything but the page follows it too.
 // The URL follows the topmost visible row, so a reload or Back renders
-// that row's page anchored on the row.
+// that row's page anchored on the row; opening an article anchors it on
+// that article's row instead, and remembers where on the screen the row
+// was, so Back to a page that's loaded again puts it back there.
 export function init(): void {
   const list = document.querySelector(".article-list");
   if (!list || !("IntersectionObserver" in window)) return;
@@ -40,11 +75,24 @@ export function init(): void {
     u.hash = "";
     return u.href;
   };
+  const isFirst = (row: HTMLElement) => row === list.querySelector(":scope > .article-row");
+
+  // The scroll a browser would restore was measured on this page with
+  // every page infinite scroll added; loaded again, the page has only the
+  // anchored row's page, so that scroll lands anywhere (Safari keeps it,
+  // cut to the shorter page). We put the anchored row back instead. Set
+  // here, it's this history entry's mode when it's loaded again.
+  history.scrollRestoration = "manual";
+  restoreRow(list);
 
   const visible = new Set<HTMLElement>();
   let timer = 0;
   let current: HTMLElement | null = null;
+  // opened is set while an opened article's row holds the URL: until the
+  // page is shown again from the back/forward cache, nothing moves it.
+  let opened = false;
   const updateURL = () => {
+    if (opened) return;
     let top: HTMLElement | null = null;
     let topY = Infinity;
     for (const row of visible) {
@@ -58,10 +106,30 @@ export function init(): void {
     current = top;
     // At the very top of the page, keep the plain URL rather than
     // anchoring on the first row.
-    const url =
-      top === list.querySelector(":scope > .article-row") ? top.dataset.pageUrl : `${top.dataset.pageUrl}#${top.id}`;
-    history.replaceState(null, "", url);
+    history.replaceState(null, "", isFirst(top) ? top.dataset.pageUrl : `${top.dataset.pageUrl}#${top.id}`);
   };
+  // Opening an article (a plain press of its row's .article-card; a
+  // press with a modifier opens it elsewhere and leaves this page as it
+  // is) anchors the URL on its row, with the row's distance from the top
+  // of the screen in the entry's state.
+  list.addEventListener("click", (e) => {
+    const me = e as MouseEvent;
+    if (me.button !== 0 || me.metaKey || me.ctrlKey || me.shiftKey || me.altKey) return;
+    const link = (e.target as Element).closest(".article-card a[href]");
+    const row = link?.closest<HTMLElement>(".article-list > .article-row");
+    if (!row?.dataset.pageUrl) return;
+    clearTimeout(timer);
+    opened = true;
+    current = row;
+    if (isFirst(row)) history.replaceState(null, "", row.dataset.pageUrl);
+    else {
+      const state: RowState = { row: row.id, top: row.getBoundingClientRect().top };
+      history.replaceState(state, "", `${row.dataset.pageUrl}#${row.id}`);
+    }
+  });
+  addEventListener("pageshow", (e) => {
+    if (e.persisted) opened = false;
+  });
   const rows = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
@@ -71,7 +139,12 @@ export function init(): void {
       clearTimeout(timer);
       timer = setTimeout(updateURL, 250);
     },
-    { threshold: 0 },
+    // A row counts as visible below the band its scroll-margin keeps
+    // clear of the sticky bars, so the URL never names a row hidden
+    // under them, and a reload lands on the row that was showing. A pixel
+    // more, as a row that only touches the edge counts: the one above a
+    // row scrolled to its margin ends there.
+    { threshold: 0, rootMargin: `-${scrollMargin(list) + 1}px 0px 0px 0px` },
   );
 
   const firstPage = withoutHash(location.href);

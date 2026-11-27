@@ -280,6 +280,14 @@ Each with when it pays off:
 - [ ] **Authors from the article's web page.**
   Feeds that name no author could get one from enrichment (`article:author`, `<meta name="author">`, JSON-LD), stored apart from the feed's authors like the other page values.
   Only worth it if many articles turn out to name none ("Measure what articles carry", below).
+- [ ] **Newer articles above an older page.**
+  Back to a timeline (or a feed, a site, Saved) that's loaded again renders only the opened article's page, under "Back to newest", so the reader can't scroll up to where they came from.
+  A "Newer articles" link at the top of an older page (its own cursor, toward the newest) that infinite scroll loads and inserts above, with scroll anchoring keeping the rows in view still, would make it one list again; without JavaScript it's a link to the newer page.
+  Changes how older pages look, so it needs a design checkpoint (the link's words and place, and whether "Back to newest" stays beside it).
+- [ ] **Restore pages from the back/forward cache in Safari and Firefox.**
+  They never restore a `no-store` page, so on an iPhone every Back to a timeline loads it again with only one page of rows; restoring it would keep every page infinite scroll added and the exact scroll.
+  Needs navigations sent `private, no-cache` instead of `no-store`, with `Clear-Site-Data` on logout so a shared device keeps no logged-in pages; "Back to a timeline is restored from the back/forward cache" under "Reading" in decisions.md has this waiting on how often Chrome restores (the admin's Back and Forward figures).
+  Rejected for now: rebuilding the page ourselves (saving the pages loaded and the scroll in `sessionStorage`, fetching them all again on load), close to the navigation of our own that "Not a single-page app" in decisions.md rejects.
 - [ ] **Load full article (on demand).**
   A "Load full article" button on the article page when the feed only sends a summary: a POST that fetches the page once, extracts the text readability-style (a dependency, e.g. `go-shiori/go-readability`), sanitizes it like feed HTML and keeps it on the article for every reader.
   Never automatic: it costs storage, extraction fails on paywalls and cookie walls, and storing publishers' full text is a copyright question for a public product.

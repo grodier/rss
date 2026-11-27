@@ -387,6 +387,8 @@ All requests to URLs a user can influence (websites to look up, feeds and the pa
 - 10 s for the whole request, bodies capped at 5 MiB, no environment proxy;
 - a fixed `User-Agent` and `Accept`.
 
+`fetch.Transient` says which of `Get`'s errors may not last (anything but its refusals: a body too large, a blocked address, a scheme other than `http` or `https`, too many redirects), so the icon and enrichment runners retry only those.
+
 Site icons are downloaded through their own `fetch.Client`, with bodies capped at 256 KiB (`siteicon.MaxBytes`); the home page they're found on goes through the shared one.
 
 Inspectors (debug mode) fetch through the shared `fetch.Client` too (`Services.Fetcher`), synchronously in the request, with a 30 s budget (`inspectTimeout`) and an extended write deadline; they save nothing.

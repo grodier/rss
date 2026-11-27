@@ -215,11 +215,13 @@ func (d *Discoverer) discover(ctx context.Context, u *url.URL) (Result, error) {
 // and HomePage false, since the page itself wasn't read); else
 // ErrUnreachable, with the candidates checked, if any. Only the page's
 // status is retried this way: a page that couldn't be fetched at all means
-// the host is likely down.
+// the host is likely down. Neither is a u that is one of those feeds: it
+// was asked for, not its site, so another of the site's feeds (an import's
+// releases.atom answered by tags.atom) mustn't stand in for it.
 func (d *Discoverer) refused(ctx context.Context, u *url.URL, status int) (Result, error) {
 	unreachable := fmt.Errorf("%w: %s: status %d", ErrUnreachable, u, status)
 	candidates := platformCandidates(SiteRoot(u), SiteKey(u))
-	if len(candidates) == 0 {
+	if len(candidates) == 0 || isCandidate(u, candidates) {
 		return Result{}, unreachable
 	}
 	feeds, checked, err := d.checkCandidates(ctx, candidates, SourcePlatform)
@@ -254,6 +256,18 @@ func platformCandidates(root *url.URL, key string) []Candidate {
 		}
 	}
 	return candidates
+}
+
+// isCandidate reports whether u is one of candidates, ignoring the
+// differences CanonicalFeedURL ignores.
+func isCandidate(u *url.URL, candidates []Candidate) bool {
+	want := CanonicalFeedURL(u)
+	for _, c := range candidates {
+		if CanonicalFeedURL(c.URL) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // siteFromFeed is the site of a feed found at feedURL whose link to its site

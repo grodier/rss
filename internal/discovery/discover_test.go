@@ -1057,6 +1057,29 @@ func TestDiscoverPlatformPageRefused(t *testing.T) {
 		}
 	})
 
+	t.Run("the address is one of the platform's feeds", func(t *testing.T) {
+		for _, tt := range []struct{ input, other string }{
+			{"https://github.com/owner/repo/releases.atom", "https://github.com/owner/repo/tags.atom"},
+			{"https://medium.com/feed/@alice", ""},
+			{"https://mastodon.social/@bob.rss", ""},
+			{"https://www.youtube.com/feeds/videos.xml?channel_id=UCabc", ""},
+		} {
+			f := &fakeFetcher{responses: map[string]*fetch.Response{
+				tt.input: {StatusCode: http.StatusBadGateway},
+			}}
+			if tt.other != "" {
+				f.responses[tt.other] = atomResp("Tags from repo", "https://github.com/owner/repo/tags")
+			}
+			res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), mustURL(t, tt.input))
+			if !errors.Is(err, ErrUnreachable) {
+				t.Errorf("%s: err = %v, want ErrUnreachable", tt.input, err)
+			}
+			if len(res.Feeds) != 0 || !slices.Equal(f.gets, []string{tt.input}) {
+				t.Errorf("%s: Feeds = %v, gets = %v, want only the address, no feeds", tt.input, feedURLs(res.Feeds), f.gets)
+			}
+		}
+	})
+
 	t.Run("a network error", func(t *testing.T) {
 		f := &fakeFetcher{
 			errs: map[string]error{"https://medium.com/@alice": errors.New("connection refused")},

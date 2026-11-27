@@ -27,6 +27,13 @@ type platform struct {
 	// Medium's "Stories by … on Medium", GitHub's "GitHub - ", " · GitHub"
 	// and a repository's description.
 	ownName func(key, name string, fromFeed bool) string
+
+	// feeds returns the addresses of the feeds the platform publishes for
+	// the site whose root is root and key is key, in the order to try them;
+	// nil when it publishes none or the key is the platform's own page.
+	// Discovery tries them when the site's page lists no feed or answers
+	// with an error status (#849).
+	feeds func(root *url.URL, key string) []string
 }
 
 // platforms are the hosts with their own rules, in no particular order.
@@ -37,18 +44,21 @@ var platforms = []platform{
 		kind:     KindWebsites,
 		rootPath: mediumRootPath,
 		ownName:  mediumOwnName,
+		feeds:    mediumFeeds,
 	},
 	{
 		host:     "youtube.com",
 		name:     "YouTube",
 		kind:     KindVideos,
 		rootPath: youtubeRootPath,
+		feeds:    youtubeFeeds,
 	},
 	{
 		host:     "reddit.com",
 		name:     "Reddit",
 		kind:     KindWebsites,
 		rootPath: redditRootPath,
+		feeds:    redditFeeds,
 	},
 	{
 		host:     "github.com",
@@ -56,12 +66,14 @@ var platforms = []platform{
 		kind:     KindWebsites,
 		rootPath: githubRootPath,
 		ownName:  githubOwnName,
+		feeds:    githubFeeds,
 	},
 	{
 		host:     "bsky.app",
 		name:     "Bluesky",
 		kind:     KindSocial,
 		rootPath: blueskyRootPath,
+		feeds:    blueskyFeeds,
 	},
 }
 
@@ -78,6 +90,36 @@ var platformsByHost = func() map[string]platform {
 func platformFor(host string) (platform, bool) {
 	p, ok := platformsByHost[host]
 	return p, ok
+}
+
+// platformFeeds returns the feeds a platform publishes for the site with
+// root and key (see platform.feeds): the host's entry's, else, for a key
+// that names an "@name" site on any other host, "/@name.rss" (Mastodon).
+func platformFeeds(root *url.URL, key string) []string {
+	if !hasPath(key) {
+		return nil
+	}
+	if p, ok := platformFor(KeyHost(key)); ok {
+		if p.feeds == nil {
+			return nil
+		}
+		return p.feeds(root, key)
+	}
+	segs := rootSegs(root)
+	if len(segs) != 1 || !isAtName(segs[0]) {
+		return nil
+	}
+	return []string{root.Scheme + "://" + root.Host + "/" + segs[0] + ".rss"}
+}
+
+// rootSegs is a site root's path split on "/", without the leading and
+// trailing "/", in the root's case, each segment escaped for a path.
+func rootSegs(root *url.URL) []string {
+	segs := strings.Split(strings.Trim(root.Path, "/"), "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return segs
 }
 
 // seg is segs[i], or "" past its end.
@@ -133,6 +175,15 @@ func mediumOwnName(_, name string, _ bool) string {
 	return name
 }
 
+// mediumFeeds: an author's feed, /feed/@name.
+func mediumFeeds(root *url.URL, _ string) []string {
+	segs := rootSegs(root)
+	if len(segs) != 1 || !isAtName(segs[0]) {
+		return nil
+	}
+	return []string{"https://medium.com/feed/" + segs[0]}
+}
+
 // YouTube.
 
 // youtubeRootPath: /@handle/…, /channel/ID/…, /feeds/videos.xml?channel_id=ID,
@@ -153,6 +204,20 @@ func youtubeRootPath(u *url.URL, segs []string) (string, bool) {
 	return "", false
 }
 
+// youtubeFeeds: a channel's videos, by its ID. A /@handle, /c/name or
+// /user/name page's own feed link names its channel, and is found there.
+func youtubeFeeds(root *url.URL, _ string) []string {
+	segs := rootSegs(root)
+	if len(segs) != 2 || segs[0] != "channel" {
+		return nil
+	}
+	id, err := url.PathUnescape(segs[1])
+	if err != nil {
+		return nil
+	}
+	return []string{"https://www.youtube.com/feeds/videos.xml?channel_id=" + url.QueryEscape(id)}
+}
+
 // Reddit.
 
 // redditRootPath: /r/name/… (/r/name/.rss, /r/name.rss), /user/name/…,
@@ -167,6 +232,16 @@ func redditRootPath(_ *url.URL, segs []string) (string, bool) {
 		return "/user/" + name, false
 	}
 	return "", false
+}
+
+// redditFeeds: a subreddit's or a user's posts, /r/name/.rss and
+// /user/name/.rss.
+func redditFeeds(root *url.URL, _ string) []string {
+	segs := rootSegs(root)
+	if len(segs) != 2 || (segs[0] != "r" && segs[0] != "user") {
+		return nil
+	}
+	return []string{"https://www.reddit.com/" + segs[0] + "/" + segs[1] + "/.rss"}
 }
 
 // GitHub.
@@ -212,6 +287,20 @@ func githubOwnName(key, name string, fromFeed bool) string {
 	return name
 }
 
+// githubFeeds: a repository's releases, tags and commits, or an owner's
+// public activity, /owner.atom.
+func githubFeeds(root *url.URL, _ string) []string {
+	segs := rootSegs(root)
+	switch {
+	case len(segs) == 2:
+		repo := "https://github.com/" + segs[0] + "/" + segs[1]
+		return []string{repo + "/releases.atom", repo + "/tags.atom", repo + "/commits.atom"}
+	case len(segs) == 1 && segs[0] != "":
+		return []string{"https://github.com/" + segs[0] + ".atom"}
+	}
+	return nil
+}
+
 // Bluesky.
 
 // blueskyRootPath: /profile/handle/… (/profile/handle/rss)
@@ -220,4 +309,13 @@ func blueskyRootPath(_ *url.URL, segs []string) (string, bool) {
 		return "/profile/" + seg(segs, 1), false
 	}
 	return "", false
+}
+
+// blueskyFeeds: a profile's posts, /profile/handle/rss.
+func blueskyFeeds(root *url.URL, _ string) []string {
+	segs := rootSegs(root)
+	if len(segs) != 2 || segs[0] != "profile" {
+		return nil
+	}
+	return []string{"https://bsky.app/profile/" + segs[1] + "/rss"}
 }

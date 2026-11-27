@@ -418,7 +418,12 @@ Planned in #50 (issues #51–#67).
   A list alone would leave thousands of fediverse instances merged; keying every site by its feed's link was rejected, since it would split ordinary sites (each NPR section's feed links to its section's page).
   The rare site that uses `/@name` for something else gets one site per such path, which is harmless.
   A page and its feed that disagree on a key with a path on the same host take the feed's (a YouTube `/@handle` page's feed links to its `/channel/ID`), so a channel is one site whichever address was looked up.
-  A path-scoped site doesn't try the common feed paths, which would find the platform's own feed.
+  A path-scoped site doesn't try the common feed paths, which would find the platform's own feed; since #849 it tries its platform's own feeds for it instead (amended there).
+- **A platform's own feeds for a site are tried only when its page lists none or answers with an error status** (#849, planned in #860): each platform entry derives them from the site's root alone, with no fetch (a Medium author's `/feed/@name`, a YouTube channel's `videos.xml`, a subreddit's or Reddit user's `/.rss`, a GitHub repository's releases, tags and commits or an owner's `.atom`, a Bluesky profile's `/rss`, and on any other host an `@name` account's `/@name.rss`).
+  A page that lists feeds is the site's own word on them, so its list wins; always adding the platform's would offer feeds the site chose not to list (a repository's commits).
+  A page that answers with an error status (Medium's pages answered 403 to servers while their feeds answered 200) tries them before failing, and a feed that parses makes the lookup succeed as if that feed had been looked up: the site is named from the feed and, not read from its page, doesn't replace an existing site's name (#716).
+  A page that can't be fetched at all isn't retried, as its host is likely down.
+  Several feeds are offered rather than one guessed, as for "main" feeds (#629): a GitHub repository offers all three, and the reader picks on the site page.
 - **What discovery knows about a platform is one entry in a table** (#848, planned in #860): a struct per shared host in `internal/discovery/platforms.go` holds its path rule, name, kind and title affixes, and later platform work adds fields to it rather than another list keyed by host.
   A table was preferred over an interface with a type per platform: the entries are data with one or two small functions each, and a table reads as the list of supported platforms.
   The generic `@name` rule stays the fallback for every host without an entry, or whose entry has no path rule.

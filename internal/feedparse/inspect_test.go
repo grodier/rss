@@ -141,6 +141,8 @@ func TestInspectMediaGroup(t *testing.T) {
 
 	checkField(t, insp.ItemFields, "media:group/media:thumbnail@url", 1, true)
 	checkField(t, insp.ItemFields, "media:group/media:content@type", 1, true)
+	checkField(t, insp.ItemFields, "media:group/media:title", 1, true)
+	checkField(t, insp.ItemFields, "media:group/media:description", 1, true)
 	checkField(t, insp.ItemFields, "media:group", 1, true) // it holds used fields
 	checkField(t, insp.ItemFields, "yt:videoId", 1, false)
 	checkField(t, insp.Channel, "yt:channelId", 1, false)

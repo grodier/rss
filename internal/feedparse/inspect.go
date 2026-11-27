@@ -73,9 +73,12 @@ var namespacePrefixes = map[string]string{
 // mediaItemFields are the Media RSS paths Parse reads in an item:
 // media:thumbnail and those in a media:group for its image (itemImage),
 // media:content and those in a media:group for its media type
-// (itemMediaType).
+// (itemMediaType), and media:title and media:description and those in a
+// media:group as fallbacks for its title and summary (mediaText).
 var mediaItemFields = []string{
 	"media:thumbnail@url", "media:group/media:thumbnail@url",
+	"media:title", "media:group/media:title",
+	"media:description", "media:group/media:description",
 	"media:content@type", "media:content@medium",
 	"media:group/media:content@type", "media:group/media:content@medium",
 }

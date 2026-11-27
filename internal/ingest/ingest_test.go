@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -715,4 +716,30 @@ func (f *stubFetcher) Get(_ context.Context, rawURL string, _ http.Header) (*fet
 		return nil, err
 	}
 	return &fetch.Response{StatusCode: f.status, URL: u, Header: http.Header{}}, nil
+}
+
+// A YouTube video's description, in its media:group, is its excerpt, so it
+// isn't queued for enrichment (see TestYouTubeVideoNotEnriched in
+// internal/psql).
+func TestArticlesYouTubeExcerpt(t *testing.T) {
+	body, err := os.ReadFile("../feedparse/testdata/atom-media-group.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	feedURL, _ := url.Parse("https://www.youtube.com/feeds/videos.xml?channel_id=UC123")
+	feed, err := feedparse.Parse(feedURL, body)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	got := Articles(feed.Items)
+	if len(got) != 1 {
+		t.Fatalf("got %d articles, want 1", len(got))
+	}
+	a := got[0]
+	if a.Excerpt != "About the video." {
+		t.Errorf("Excerpt = %q, want %q", a.Excerpt, "About the video.")
+	}
+	if a.Title == "" || a.ImageURL == "" {
+		t.Errorf("Title = %q, ImageURL = %q, want both", a.Title, a.ImageURL)
+	}
 }

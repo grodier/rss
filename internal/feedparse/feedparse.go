@@ -50,8 +50,8 @@ type Item struct {
 	URL       string    // absolute http(s) link to the article, resolved against the feed URL; "" if missing or not http(s)
 	ImageURL  string    // absolute http(s) URL of the item's declared image, resolved against the feed URL; "" if none
 	MediaType string    // lowercase MIME type (without parameters) of the item's first audio/* or video/* enclosure or media:content; "" if none
-	Title     string    // plain text, trimmed and collapsed; may be ""
-	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"
+	Title     string    // plain text, trimmed and collapsed; else media:title (see mediaText); may be ""
+	Summary   string    // raw HTML as published; RSS <description>, Atom <summary>, JSON "summary"; with neither it nor Content, media:description as escaped text (see mediaText, textToHTML)
 	Content   string    // raw HTML as published; RSS <content:encoded>, Atom <content>, JSON "content_html" (or escaped "content_text")
 	Authors   []string  // names of the item's authors (see itemAuthors); nil if none
 	Published time.Time // published date, else updated date, in UTC; zero if neither parses
@@ -192,6 +192,9 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 		if entryTitleTypes != nil && isHTMLType(entryTitleTypes[i]) {
 			item.Title = HTMLToText(it.Title)
 		}
+		if item.Title == "" {
+			item.Title = collapseSpace(mediaText(it, "title"))
+		}
 		if format == "json" {
 			// gofeed falls back to content_text, which is plain text, not
 			// HTML.
@@ -202,6 +205,9 @@ func parse(feedURL *url.URL, body []byte) (Feed, *gofeed.Feed, []int, error) {
 					item.Content = stdhtml.EscapeString(jsonItems[i].ContentText)
 				}
 			}
+		}
+		if strings.TrimSpace(item.Summary) == "" && strings.TrimSpace(item.Content) == "" {
+			item.Summary = textToHTML(mediaText(it, "description"))
 		}
 		// A date with no ":" has no time of day: every time format uses one.
 		switch {
@@ -484,6 +490,51 @@ func personName(s string) string {
 		return ""
 	}
 	return s
+}
+
+// mediaText returns the text of an item's first non-blank Media RSS element
+// name ("title", "description"): at the item's top level, else in a
+// media:group. YouTube's feeds put a video's title and description in a
+// media:group. "" if none.
+func mediaText(it *gofeed.Item, name string) string {
+	media := it.Extensions["media"]
+	for _, e := range media[name] {
+		if strings.TrimSpace(e.Value) != "" {
+			return e.Value
+		}
+	}
+	for _, g := range media["group"] {
+		for _, e := range g.Children[name] {
+			if strings.TrimSpace(e.Value) != "" {
+				return e.Value
+			}
+		}
+	}
+	return ""
+}
+
+// paragraphBreakRX matches a blank line: the end of a paragraph of plain
+// text.
+var paragraphBreakRX = regexp.MustCompile(`\n[ \t]*\n\s*`)
+
+// textToHTML returns plain text as HTML that reads as it: HTML-escaped,
+// each run of lines separated by a blank line a <p>, and the line breaks
+// within one a <br>. "" if text is blank.
+func textToHTML(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r", "\n"))
+	if text == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, para := range paragraphBreakRX.Split(text, -1) {
+		lines := strings.Split(para, "\n")
+		for i, l := range lines {
+			lines[i] = stdhtml.EscapeString(strings.TrimSpace(l))
+		}
+		b.WriteString("<p>" + strings.Join(lines, "<br>") + "</p>")
+	}
+	return b.String()
 }
 
 // itemMediaType returns the media type of an item's audio or video, from the

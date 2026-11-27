@@ -980,3 +980,152 @@ func TestParseFeedImage(t *testing.T) {
 		}
 	}
 }
+
+func TestParseItemMediaText(t *testing.T) {
+	feedURL := mustParseURL(t, "https://example.com/feed.xml")
+	const mediaNS = ` xmlns:media="http://search.yahoo.com/mrss/"`
+	atomEntry := func(entry string) string {
+		return `<feed xmlns="http://www.w3.org/2005/Atom"` + mediaNS + `><title>F</title><entry><id>1</id>` + entry + `</entry></feed>`
+	}
+	rssItem := func(item string) string {
+		return `<rss version="2.0"` + mediaNS + `><channel><title>F</title><item><guid>1</guid>` + item + `</item></channel></rss>`
+	}
+	tests := []struct {
+		name        string
+		body        string
+		wantTitle   string
+		wantSummary string
+		wantContent string
+		wantText    string // HTMLToText(Summary), checked when not ""
+	}{
+		{
+			name:        "group description is the summary",
+			body:        atomEntry(`<title>A</title><media:group><media:description>About the video.</media:description></media:group>`),
+			wantTitle:   "A",
+			wantSummary: "<p>About the video.</p>",
+		},
+		{
+			name:        "own summary kept",
+			body:        atomEntry(`<title>A</title><summary>Its own.</summary><media:group><media:description>About the video.</media:description></media:group>`),
+			wantTitle:   "A",
+			wantSummary: "Its own.",
+		},
+		{
+			name:        "own content kept, no summary added",
+			body:        atomEntry(`<title>A</title><content type="html">&lt;p&gt;Body&lt;/p&gt;</content><media:group><media:description>About the video.</media:description></media:group>`),
+			wantTitle:   "A",
+			wantContent: "<p>Body</p>",
+		},
+		{
+			name:        "description escaped as text",
+			body:        atomEntry(`<title>A</title><media:group><media:description>&lt;b&gt;Bold&lt;/b&gt; &amp; more</media:description></media:group>`),
+			wantTitle:   "A",
+			wantSummary: "<p>&lt;b&gt;Bold&lt;/b&gt; &amp; more</p>",
+			wantText:    "<b>Bold</b> & more",
+		},
+		{
+			name:        "line breaks and paragraphs kept",
+			body:        atomEntry("<title>A</title><media:group><media:description>One\r\nTwo\n\n\nThree</media:description></media:group>"),
+			wantTitle:   "A",
+			wantSummary: "<p>One<br>Two</p><p>Three</p>",
+		},
+		{
+			name:        "blank description ignored",
+			body:        atomEntry(`<title>A</title><media:group><media:description> </media:description></media:group>`),
+			wantTitle:   "A",
+			wantSummary: "",
+		},
+		{
+			name:        "media:title when no title",
+			body:        atomEntry(`<media:group><media:title> A  video </media:title></media:group>`),
+			wantTitle:   "A video",
+			wantSummary: "",
+		},
+		{
+			name:        "own title kept",
+			body:        atomEntry(`<title>Own</title><media:group><media:title>Media</media:title></media:group>`),
+			wantTitle:   "Own",
+			wantSummary: "",
+		},
+		{
+			name:        "top-level before group",
+			body:        rssItem(`<media:group><media:description>Group</media:description><media:title>Group</media:title></media:group><media:description>Top</media:description><media:title>Top</media:title>`),
+			wantTitle:   "Top",
+			wantSummary: "<p>Top</p>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Parse(feedURL, []byte(tt.body))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			it := got.Items[0]
+			if it.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", it.Title, tt.wantTitle)
+			}
+			if it.Summary != tt.wantSummary {
+				t.Errorf("Summary = %q, want %q", it.Summary, tt.wantSummary)
+			}
+			if it.Content != tt.wantContent {
+				t.Errorf("Content = %q, want %q", it.Content, tt.wantContent)
+			}
+			if tt.wantText != "" {
+				if text := HTMLToText(it.Summary); text != tt.wantText {
+					t.Errorf("HTMLToText(Summary) = %q, want %q", text, tt.wantText)
+				}
+			}
+		})
+	}
+}
+
+func TestParseMediaDescriptionFixtures(t *testing.T) {
+	tests := []struct {
+		file        string
+		feedURL     string
+		wantTitle   string
+		wantSummary string
+		wantText    string
+	}{
+		{
+			file:        "atom-media-group.xml",
+			feedURL:     "https://www.youtube.com/feeds/videos.xml?channel_id=UC123",
+			wantTitle:   "A video",
+			wantSummary: "<p>About the video.</p>",
+			wantText:    "About the video.",
+		},
+		{
+			// media:description and media:title at the item's top level,
+			// not in a media:group.
+			file:        "rss-media-description.xml",
+			feedURL:     "https://videos.example.com/feed.xml",
+			wantTitle:   "A clip",
+			wantSummary: "<p>First line &amp; more.<br>Second line.</p>",
+			wantText:    "First line & more. Second line.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			got, err := Parse(mustParseURL(t, tt.feedURL), readTestdata(t, tt.file))
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if len(got.Items) != 1 {
+				t.Fatalf("got %d items, want 1", len(got.Items))
+			}
+			it := got.Items[0]
+			if it.Title != tt.wantTitle {
+				t.Errorf("Title = %q, want %q", it.Title, tt.wantTitle)
+			}
+			if it.Summary != tt.wantSummary {
+				t.Errorf("Summary = %q, want %q", it.Summary, tt.wantSummary)
+			}
+			if text := HTMLToText(it.Summary); text != tt.wantText {
+				t.Errorf("HTMLToText(Summary) = %q, want %q", text, tt.wantText)
+			}
+		})
+	}
+}

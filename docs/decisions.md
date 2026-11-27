@@ -419,6 +419,9 @@ Planned in #50 (issues #51–#67).
   The rare site that uses `/@name` for something else gets one site per such path, which is harmless.
   A page and its feed that disagree on a key with a path on the same host take the feed's (a YouTube `/@handle` page's feed links to its `/channel/ID`), so a channel is one site whichever address was looked up.
   A path-scoped site doesn't try the common feed paths, which would find the platform's own feed.
+- **What discovery knows about a platform is one entry in a table** (#848, planned in #860): a struct per shared host in `internal/discovery/platforms.go` holds its path rule, name, kind and title affixes, and later platform work adds fields to it rather than another list keyed by host.
+  A table was preferred over an interface with a type per platform: the entries are data with one or two small functions each, and a table reads as the list of supported platforms.
+  The generic `@name` rule stays the fallback for every host without an entry, or whose entry has no path rule.
 - **A site on a shared host goes by its own name, and its platform is shown wherever it's named** (#728, option 1 approved by the owner over the page's own title and over the name with its key).
   The name is the page's title without the platform's suffix, a trailing handle, Medium's "Stories by … on Medium" or GitHub's affixes (`discovery.OwnName`), stored that way; the platform follows it as "Alice · Medium", or "Bob · mastodon.social" on a host the rules don't name, and "Read on" names the platform.
   The platform comes from the site key, never from the title, so a title in an unexpected format can't hide it; the owner's requirement is that a reader who follows such a site always sees its platform, and a picture alone never counts.

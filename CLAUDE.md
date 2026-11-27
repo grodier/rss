@@ -256,9 +256,12 @@ Before working on a feature, read its section in `docs/features.md` (the flow an
 ## Writing issues
 
 Issues are written for an implementer with no context from the planning conversation.
+Start each from `.github/ISSUE_TEMPLATE/planned-work.md`, also when filing through the API, which doesn't apply templates.
 
 - Size each issue for one PR that can be reviewed in one sitting; plan a bigger change as several issues, in order, each of which stands on its own.
-- Sections: Why, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
+- Open with what the PR is for before how it's built: a first line with the roadmap, what it depends on and what it unblocks (each with why, and saying which have merged); then "Why", starting with one bold sentence saying what the PR delivers, a short paragraph on its value (what's missing today, and what's true once it merges), and a "What ships" list of its deliverables.
+- Keep an issue to one purpose: work that's needed only where another issue stores or shows its result goes in that issue, and a dependency on part of another issue (a finding, a constant) is named as such.
+- Sections: Why, Decisions, Changes, Tests, Out of scope, Verification, plus "Notes for parallel work" when another open issue touches the same files, and "Suggested branch".
   An issue that changes how the app looks adds "Design checkpoint": several starting options that differ in approach, the preferred one, and the pages and states the screenshots must show (both article layouts for anything in an article row, and each theme for anything about color); or it says why the change needs no checkpoint (copy only, or an existing pattern reused exactly).
 - Point at code by path and symbol (`internal/psql/feeds.go`, `upsertFeed`), and quote the current code when the change is to it.
 - State decisions already made as decisions ("don't revisit them here"), with a one-line reason, so the implementer doesn't reopen them; the planning work also records them in `docs/decisions.md`.

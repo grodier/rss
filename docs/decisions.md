@@ -1834,6 +1834,8 @@ The rules that follow from them are under "Docs" and "Finding work" in CLAUDE.md
   Before this, every name the docs mentioned still existed, but 3,700 lines of them were a cost on every PR and every read.
 - **PRs stay small enough to review in one sitting** (#567): #567's login came to about 3,300 lines across 55 files, including a refactor it needed first and an optional terminal QR code, which together could have been two smaller PRs.
   Splitting is suggested before building, and only along seams where each part stands on its own; a change that only makes sense whole stays one PR.
+- **Issues open with what the PR is for: one bold sentence, its value, and what ships** (`.github/ISSUE_TEMPLATE/planned-work.md`), before the decisions and steps.
+  Planned issues had grown into long lists of context and steps whose purpose and scope a reviewer had to piece together; the owner found #845 unfocused, and rewriting wave 20's openings this way showed it had pieces that belonged in #829 and a dependency on #828's findings that its first line denied (#845, #869).
 - **Docs stay in the same PR as the code they describe**, even though separate docs PRs would conflict less: they would let the docs fall behind.
 - **The admin and its observability have their own roadmap**, the [Admin Roadmap issue](https://github.com/grodier/rss/issues/560), at the owner's request, so the reader's roadmap stays readable; it works like #385, and neither edits the other's waves.
   (#583)

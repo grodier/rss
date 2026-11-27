@@ -37,6 +37,10 @@ type serverConfig struct {
 	// newsletterDomain is the domain of readers' newsletter addresses, like
 	// in.paperround.app; empty turns newsletters off for everyone.
 	newsletterDomain string
+	// inboundSecret keys the signature of POST /inbound/email's requests;
+	// empty turns the endpoint off. Production needs it with
+	// newsletterDomain.
+	inboundSecret string
 }
 
 type lookupConfig struct {
@@ -125,6 +129,9 @@ func (c config) Validate() error {
 	if c.server.newsletterDomain != "" && !validator.Matches(c.server.newsletterDomain, validator.DomainRX) {
 		errs = append(errs, fmt.Errorf("invalid newsletter domain %q: must be a lowercase host name, like in.paperround.app", c.server.newsletterDomain))
 	}
+	if c.env == "production" && c.server.newsletterDomain != "" && c.server.inboundSecret == "" {
+		errs = append(errs, errors.New("-inbound-secret (RSS_INBOUND_SECRET) must be set in production when -newsletter-domain is"))
+	}
 	if c.db.dsn == "" {
 		errs = append(errs, errors.New("database DSN must not be empty"))
 	}
@@ -167,6 +174,8 @@ func parseConfig(args []string, getenv func(string) string, out io.Writer) (conf
 	fs.StringVar(&debugEmails, "debug-emails", "", "Accounts that may turn on debug mode, comma-separated (default: debug mode off)")
 
 	fs.StringVar(&cfg.server.newsletterDomain, "newsletter-domain", "", "Domain of readers' newsletter addresses, like in.paperround.app (default: newsletters off)")
+
+	fs.StringVar(&cfg.server.inboundSecret, "inbound-secret", "", "Secret that signs POST /inbound/email's requests (required in production with -newsletter-domain; default: the endpoint off)")
 
 	fs.IntVar(&cfg.server.proxyHops, "proxy-hops", cfg.server.proxyHops, "Reverse proxies in front of the app that append to X-Forwarded-For (0-3; 0 ignores the header)")
 

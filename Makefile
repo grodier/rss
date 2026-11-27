@@ -51,6 +51,17 @@ docker/build:
 docker/build/admin:
 	docker build --build-arg VERSION=$$(git rev-parse HEAD) --target admin -t rss-admin .
 
+## inbound/post to=$1 file=$2: post an .eml file to the local app's POST /inbound/email for address $1, signed with RSS_INBOUND_SECRET
+.PHONY: inbound/post
+inbound/post:
+	@test -n "$$RSS_INBOUND_SECRET" || { echo "Set RSS_INBOUND_SECRET (and RSS_NEWSLETTER_DOMAIN) in .env"; exit 1; }
+	@test -n "${to}" && test -f "${file}" || { echo "Usage: make inbound/post to=<address> file=<message.eml>"; exit 1; }
+	@t=$$(date +%s); \
+	sig=$$({ printf '%s\n%s\n' "$$t" "${to}"; cat "${file}"; } | openssl dgst -sha256 -hmac "$$RSS_INBOUND_SECRET" -r | cut -d' ' -f1); \
+	curl -sS -o /dev/null -w '%{http_code}\n' --data-binary @"${file}" \
+		-H 'Content-Type: message/rfc822' -H "X-Inbound-To: ${to}" -H "X-Inbound-Signature: t=$$t,v1=$$sig" \
+		"$${RSS_INBOUND_URL:-http://localhost:$${RSS_PORT:-8080}/inbound/email}"
+
 .PHONY: clean
 clean:
 	rm -rf bin web/dist

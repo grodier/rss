@@ -53,6 +53,11 @@ func (s *Server) router() http.Handler {
 	// docs/decisions.md).
 	router.Post("/rum", s.rumHandler)
 
+	// Inbound email needs no session: its caller, the mail adapter, signs
+	// each request (see "Inbound email" in docs/architecture.md). It sends
+	// no Origin or Sec-Fetch-Site, so CrossOriginProtection lets it through.
+	router.Post("/inbound/email", s.inboundEmailHandler)
+
 	// The policy pages need no session: they're the same for everyone.
 	router.Get("/privacy", s.privacyHandler)
 	router.Get("/terms", s.termsHandler)

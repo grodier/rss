@@ -46,6 +46,9 @@ type Config struct {
 	// NewsletterDomain is the domain of readers' newsletter addresses, like
 	// in.paperround.app. Empty turns newsletters off for everyone.
 	NewsletterDomain string
+	// InboundSecret keys the HMAC that signs POST /inbound/email's requests.
+	// Empty turns the endpoint off, like an empty NewsletterDomain.
+	InboundSecret string
 }
 
 // FeedStore is the feed persistence the server depends on.
@@ -387,6 +390,26 @@ type NewsletterStore interface {
 	NewAddress(ctx context.Context, userID, localPart string) (rss.NewsletterAddress, error)
 }
 
+// InboundStore stores the emails POST /inbound/email receives; satisfied by
+// *psql.InboundRepository.
+type InboundStore interface {
+	// ResolveAddress returns the address with localPart, current or retired
+	// within rss.NewsletterRetiredFor, and its reader. rss.ErrNoRecord for
+	// an unknown or expired address; rss.ErrNoAccess for a reader without
+	// rss.FeatureNewsletters.
+	ResolveAddress(ctx context.Context, localPart string) (addressID, userID string, err error)
+	// Store saves raw for the address. rss.ErrInboundFull over the reader's
+	// rss.InboundPendingMaxBytes; rss.ErrDuplicateInbound for a replay of
+	// an email still waiting.
+	Store(ctx context.Context, addressID, userID string, raw []byte) error
+}
+
+// JobObserver counts jobs for the admin; satisfied by *metrics.Jobs. The
+// server counts POST /inbound/email's requests as runner inbound's jobs.
+type JobObserver interface {
+	Observe(runner, outcome string, d time.Duration)
+}
+
 // RUMStore stores the real-user beacons; satisfied by *psql.RUMRepository.
 type RUMStore interface {
 	Record(ctx context.Context, v rss.RUMView) error
@@ -419,6 +442,8 @@ var (
 	_ ErrorRecorder     = (*metrics.ErrorLog)(nil)
 	_ RUMStore          = (*psql.RUMRepository)(nil)
 	_ NewsletterStore   = (*psql.NewsletterRepository)(nil)
+	_ InboundStore      = (*psql.InboundRepository)(nil)
+	_ JobObserver       = (*metrics.Jobs)(nil)
 )
 
 // DatabasePinger checks that the database answers; *sql.DB is one.
@@ -455,6 +480,9 @@ type Services struct {
 	ErrorLog            ErrorRecorder
 	RUMService          RUMStore
 	NewsletterService   NewsletterStore
+	InboundService      InboundStore
+	// JobMetrics may be nil: nothing is counted.
+	JobMetrics JobObserver
 }
 
 type Server struct {
@@ -536,6 +564,15 @@ type Server struct {
 	// key, ""), which rumLimiter can't: a client can rotate addresses.
 	rumTotalLimiter *ratelimit.Limiter
 
+	// inboundAddressLimiter caps the emails POST /inbound/email accepts per
+	// newsletter address (keyed by its ID).
+	inboundAddressLimiter *ratelimit.Limiter
+
+	// inboundReaderLimiter caps the emails POST /inbound/email accepts per
+	// reader, across their current and retired addresses (keyed by user
+	// ID).
+	inboundReaderLimiter *ratelimit.Limiter
+
 	// clientIPs finds requests' client addresses behind Config.ProxyHops
 	// proxies (clientIP). Its Logger is the one New was given: a test that
 	// replaces s.logger afterwards doesn't see its warning.
@@ -586,6 +623,8 @@ func NewServer(logger *slog.Logger, cfg Config, services Services, sessionManage
 		emailChangeLimiter:    ratelimit.New(5, time.Hour),
 		rumLimiter:            ratelimit.New(120, 10*time.Minute),
 		rumTotalLimiter:       ratelimit.New(600, time.Minute),
+		inboundAddressLimiter: ratelimit.New(100, time.Hour),
+		inboundReaderLimiter:  ratelimit.New(300, time.Hour),
 		clientIPs:             &httpserve.ClientIP{ProxyHops: cfg.ProxyHops, Logger: logger},
 		server: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.Port),

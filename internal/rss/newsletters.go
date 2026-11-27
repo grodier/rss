@@ -40,4 +40,20 @@ var (
 	// ErrAddressTooRecent is a new address asked for less than
 	// NewsletterAddressEvery after the current one was made.
 	ErrAddressTooRecent = errors.New("rss: newsletter address too recent")
+	// ErrNoAccess is mail to the address of a reader without
+	// FeatureNewsletters.
+	ErrNoAccess = errors.New("rss: the reader has no access to newsletters")
+	// ErrDuplicateInbound is a received email that's already waiting to be
+	// processed for the same address: a replay.
+	ErrDuplicateInbound = errors.New("rss: duplicate inbound email")
+	// ErrInboundFull is a received email that would take a reader's waiting
+	// emails over InboundPendingMaxBytes.
+	ErrInboundFull = errors.New("rss: too much inbound email waiting")
 )
+
+// InboundMaxBytes is the largest email POST /inbound/email accepts.
+const InboundMaxBytes = 5 << 20
+
+// InboundPendingMaxBytes caps the emails waiting to be processed for one
+// reader, across their current and retired addresses.
+const InboundPendingMaxBytes = 50 << 20

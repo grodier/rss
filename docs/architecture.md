@@ -165,6 +165,7 @@ The routes email links open (`/signup`, `/confirm-email`, `/email-change`, `/wai
 | --- | --- | --- |
 | `GET /healthcheck` | no | JSON status, database reachability, environment and build version, for health checks |
 | `POST /rum` | no | The real-user beacon from `rum.ts`: one page view's metrics, stored in `rum_views` under its path's route pattern; always 204 |
+| `POST /inbound/email` | no; signed by the mail adapter | An email for a reader's newsletter address, stored in `inbound_emails`; status only (see "Inbound email" under Security measures) |
 | `GET /static/*` | no | The built frontend (`web.App`): hashed files under `assets/` and public files with their current `?v=` are cached for a year, others revalidated; an outdated entry's hashed name gets the current file |
 | `GET /manifest.webmanifest` | no | The web app manifest (`manifestHandler`), cached for a day |
 | `GET /sites/{id}/icon` | no | A site's stored icon; 404 when it has none |
@@ -254,6 +255,7 @@ users ──< user_sessions
 users ──< user_tokens
 users ──< user_features (one row per feature a reader has beyond the base app)
 users ──< newsletter_addresses (one current, and the retired ones still receiving)
+newsletter_addresses ──< inbound_emails (received emails waiting for the newsletter runner)
 users ──< feeds (owner_id: a reader's newsletter feeds, all on the one internal site, host "newsletters")
 waitlist (no foreign keys: an entry is an address, not an account)
 waitlist ──< invites >── users   (both nullable: the entry it was sent to, the account made with it)
@@ -318,6 +320,9 @@ site_key_rules   (one row: the site-key rules version whose re-key last finished
   Resending a bound invite replaces its `token_hash` and `expires_at` in place, so it keeps its wave and history and the old link stops working.
   A waitlist entry is waiting while it has no pending invite (unredeemed, unrevoked, unexpired), so one whose invite expired or was revoked can be invited again; the admin's tabs are conditions on that (`waitlistTabs` in `internal/psql/waitlist.go`), not a column.
 - **`newsletter_addresses`:** a reader's address for newsletters is `local_part@<-newsletter-domain>`; a partial unique index allows one current address (`retired_at IS NULL`) per reader, and `local_part` is unique across all of them, retired ones included, ignoring case. Get a new address retires the current one, which keeps receiving for 30 days (`rss.NewsletterRetiredFor`).
+- **`inbound_emails`:** a row per email `POST /inbound/email` accepted, with the raw message (at most 5 MiB) and its SHA-256, waiting for the newsletter runner; a unique `(address_id, digest)` refuses a second copy of an email while the first waits (a replay).
+  `InboundRepository.Store` locks the reader's `users` row, then sums the bytes waiting across all their addresses before inserting, so two emails at once can't both fit under the 50 MiB cap (`rss.InboundPendingMaxBytes`).
+  `ResolveAddress` takes a current address, or one retired within `rss.NewsletterRetiredFor`, and checks the reader's `user_features` row in the same query.
 - **Newsletter feeds are private:** a feed with an `owner_id` is that reader's newsletter feed, an ordinary `feeds` row so subscriptions, tags, timelines, reads, saves and stars work unchanged, which no one else may see; every newsletter feed belongs to one internal site, host `newsletters` (`rss.NewsletterSiteHost`), made by its migration, and its URL is `newsletter:<feed id>`, which `discovery.ParseInput` refuses.
   Another reader can't reach one by ID: `FeedRepository.GetVisible` and `ArticleRepository.GetVisible` return `rss.ErrNoRecord` for it, and every reader route that takes a feed or article ID loads it through them (the server's `visibleFeed` and `visibleArticle`), so the feed and article pages, follow, unfollow, edit, read, save, star and image-failed are 404s.
   It's never fetched: `feedDue` (background refresh and the Overview's count) and `RequestRefresh` leave it out, `ingest.Refresher` refuses it (`ErrNewsletter`), and so do the Refresh button and the debug inspectors, its owner's included; enrichment never fetches its links (`enrichWanted`, `queueEnrichBacklog`), since they're personal and fetching one can count as an open or a click.
@@ -361,6 +366,8 @@ Every hour the mail runner deletes sent and failed emails older than 7 days (`De
 
 Each runner reports every job it finishes to its `Metrics` (a `JobObserver`, `metrics.Jobs` in `www`; nil reports nothing) with its outcome, in the Metrics row above, and how long it took.
 A job interrupted by shutdown isn't reported, as it's retried; the Refresh button's fetch isn't either: it's a request, counted with the others.
+The server reports each signed `POST /inbound/email` as runner `inbound`'s job, with outcome `accepted` (a replay too), `unknown_address`, `no_access`, `too_big`, `rate_limited` or `bad_signature`; with the endpoint off it reports nothing.
+`job_metrics`' CHECK also allows `newsletter`, the runner that will process `inbound_emails`.
 
 The metrics components (`internal/metrics`) claim nothing: every instance runs them.
 `metrics.Requests` writes at the start of each minute the counts of the minutes that have ended, keyed by the minute each request finished in, and once more on shutdown, after the server has drained its requests and the runners have stopped; a failed write is logged and its counts dropped.
@@ -462,6 +469,12 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
 - **Form bodies:** `decodePostForm` caps them at 64 KiB (`httpserve.MaxFormBytes`, in both servers; the admin's seed list paste and picking page have larger caps of their own, through `decodePostFormLimit`); over the cap is a 413 and an unparseable body a 400, both HTML error pages from `formErrorResponse`.
 - **OPML uploads:** `settingsImportFormHandler` is a multipart form with its own cap: the body is limited to 1 MiB (`maxImportBytes`) plus 64 KiB for the multipart headers, and the file itself to 1 MiB; over either is a 413 that re-renders the form.
   A file may list up to 1,000 feeds (`maxImportFeeds`); the stored filename is its base name, at most 255 bytes.
+- **Inbound email** (`inboundEmailHandler`, `internal/server/inbound.go`): mail comes in through `POST /inbound/email` from an adapter (Cloudflare's Worker, #869), with the raw RFC 5322 message as the body and the recipient in `X-Inbound-To`, a header so readers' addresses stay out of the request log.
+  `X-Inbound-Signature` is `t=<unix seconds>,v1=<hex HMAC-SHA256 of t + "\n" + to + "\n" + body>`, keyed with `-inbound-secret`; the handler checks the headers and that `t` is within 5 minutes before reading the body, then reads at most 5 MiB (`rss.InboundMaxBytes`, within the server's 5 s `ReadTimeout`) and compares MACs with `hmac.Equal`.
+  The recipient is lowercased, must be at `-newsletter-domain`, and loses a `+tag`; with either setting empty, every request is a 404, and with `-env production` the app refuses to start with `-newsletter-domain` and no `-inbound-secret`.
+  The answer is a status, the contract the adapter implements: 202 stored, or a replay of an email still waiting; 404 an unknown address, one retired over 30 days ago, a reader without newsletters, or the endpoint off; 413 over 5 MiB; 429 over a limit below or 50 MiB waiting for the reader; 401 a bad or stale signature; 5xx anything else, which the sender retries.
+  It loads no session; `CrossOriginProtection` lets it through, as the adapter sends no `Origin` or `Sec-Fetch-Site`.
+  The message is only stored, never parsed in the request.
 - **Rate limits** (`internal/ratelimit`, with `clientip.RateLimitKey` for IPs): in-memory fixed windows, per process.
 
   | Limiter | Key | Limit |
@@ -481,6 +494,8 @@ The reasons are in [decisions.md](decisions.md); the rules for writing code that
   | `emailChangeLimiter` | user | 5 email change requests per hour |
   | `rumLimiter` | client IP (IPv6 by /64) | 120 real-user beacons per 10 min; the rest are dropped, still with a 204 |
   | `rumTotalLimiter` | every client together | 600 real-user beacons per minute, checked after `rumLimiter`; the rest are dropped, still with a 204 |
+  | `inboundAddressLimiter` | newsletter address | 100 received emails per hour, then 429 |
+  | `inboundReaderLimiter` | user | 300 received emails per hour across their current and retired addresses, then 429 |
   | admin `loginLimiter` | client IP (IPv6 by /64) | 10 admin login attempts per 15 min, both steps together |
   | admin `codeFailureLimiter` | admin | 5 wrong codes per 15 min |
 

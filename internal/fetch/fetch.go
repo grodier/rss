@@ -23,6 +23,17 @@ var (
 	ErrTooManyRedirects  = errors.New("fetch: too many redirects")
 )
 
+// Transient reports whether err, from Get, may not last: a network error
+// or a timeout, rather than a response or address the client refuses
+// (ErrTooLarge, ErrBlockedAddress, ErrUnsupportedScheme,
+// ErrTooManyRedirects). A caller can retry a transient error later.
+func Transient(err error) bool {
+	return !errors.Is(err, ErrTooLarge) &&
+		!errors.Is(err, ErrBlockedAddress) &&
+		!errors.Is(err, ErrUnsupportedScheme) &&
+		!errors.Is(err, ErrTooManyRedirects)
+}
+
 var errCredentials = errors.New("fetch: URLs with credentials are not allowed")
 
 const (

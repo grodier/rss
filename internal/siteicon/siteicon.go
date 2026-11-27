@@ -332,7 +332,7 @@ func (r *Runner) download(ctx context.Context, u string, current rss.SiteIcon) (
 		if ctx.Err() != nil {
 			return rss.SiteIcon{}, outcomeFailed, false
 		}
-		return rss.SiteIcon{}, "", transient(err)
+		return rss.SiteIcon{}, "", fetch.Transient(err)
 	}
 	if header != nil && resp.StatusCode == http.StatusNotModified {
 		return rss.SiteIcon{}, outcomeKept, false
@@ -361,7 +361,7 @@ func (r *Runner) pictures(ctx context.Context, info discovery.PageInfo) (urls []
 		resp, err := r.Fetcher.Get(ctx, info.Feeds[0].URL.String(), nil)
 		switch {
 		case err != nil:
-			unsure = ctx.Err() != nil || transient(err)
+			unsure = ctx.Err() != nil || fetch.Transient(err)
 		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 			unsure = true
 		case resp.StatusCode >= 200 && resp.StatusCode <= 299:
@@ -463,15 +463,6 @@ func validators(current rss.SiteIcon) http.Header {
 		h.Set("If-Modified-Since", current.LastModified)
 	}
 	return h
-}
-
-// transient reports whether a download error may not last: a network
-// error, rather than a response the fetch client refuses.
-func transient(err error) bool {
-	return !errors.Is(err, fetch.ErrTooLarge) &&
-		!errors.Is(err, fetch.ErrBlockedAddress) &&
-		!errors.Is(err, fetch.ErrUnsupportedScheme) &&
-		!errors.Is(err, fetch.ErrTooManyRedirects)
 }
 
 // usable returns the downloaded icon if it is a PNG, JPEG, GIF or ICO (by

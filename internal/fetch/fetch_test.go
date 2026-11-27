@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -297,6 +298,33 @@ func TestRejectedURLs(t *testing.T) {
 			_, err := c.Get(context.Background(), tt.url, nil)
 			if !errors.Is(err, tt.want) {
 				t.Errorf("error = %v; want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestTransient(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"too large", ErrTooLarge, false},
+		{"blocked address", ErrBlockedAddress, false},
+		{"unsupported scheme", ErrUnsupportedScheme, false},
+		{"too many redirects", ErrTooManyRedirects, false},
+		{"wrapped too large", fmt.Errorf("get: %w", ErrTooLarge), false},
+		{"wrapped blocked address", fmt.Errorf("get: %w", ErrBlockedAddress), false},
+		{"wrapped unsupported scheme", fmt.Errorf("get: %w", ErrUnsupportedScheme), false},
+		{"wrapped too many redirects", fmt.Errorf("get: %w", ErrTooManyRedirects), false},
+		{"network error", &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connection refused")}, true},
+		{"deadline exceeded", context.DeadlineExceeded, true},
+		{"other error", errors.New("something went wrong"), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Transient(tt.err); got != tt.want {
+				t.Errorf("Transient(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

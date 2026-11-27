@@ -212,7 +212,7 @@ func (r *Runner) observe(outcome string, start time.Time) {
 func (r *Runner) attempt(ctx context.Context, job rss.EnrichJob) result {
 	resp, err := r.Fetcher.Get(ctx, job.URL, nil)
 	if err != nil {
-		if !transient(err) {
+		if !fetch.Transient(err) {
 			return result{outcome: outcomeGaveUp, err: err}
 		}
 		return r.retry(job, nil, err)
@@ -262,15 +262,6 @@ func retryAt(now time.Time, attempt int, resp *fetch.Response) time.Time {
 		d = max(d, min(ingest.RetryAfter(resp.Header, now), ingest.MaxRetryDelay))
 	}
 	return now.Add(d)
-}
-
-// transient reports whether a fetch error may not last: a network error,
-// rather than a response or address the fetch client refuses.
-func transient(err error) bool {
-	return !errors.Is(err, fetch.ErrTooLarge) &&
-		!errors.Is(err, fetch.ErrBlockedAddress) &&
-		!errors.Is(err, fetch.ErrUnsupportedScheme) &&
-		!errors.Is(err, fetch.ErrTooManyRedirects)
 }
 
 // IsHTML reports whether a response is an HTML page by its Content-Type, or

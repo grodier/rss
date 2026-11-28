@@ -14,13 +14,13 @@ import (
 
 // adminPickCandidate is the condition that feed f is still to decide on
 // the picking page: not gone, not in Discover's catalog, not skipped.
-const adminPickCandidate = `f.gone_at IS NULL
+const adminPickCandidate = `f.gone_at IS NULL AND f.owner_id IS NULL
 	AND NOT EXISTS (SELECT 1 FROM discover_feeds cd WHERE cd.feed_id = f.id)
 	AND NOT EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
 
 // adminPickSkipped is the condition that feed f is skipped and not gone:
 // a gone feed unskipped wouldn't be back in the queue.
-const adminPickSkipped = `f.gone_at IS NULL AND EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
+const adminPickSkipped = `f.gone_at IS NULL AND f.owner_id IS NULL AND EXISTS (SELECT 1 FROM discover_skips ck WHERE ck.feed_id = f.id)`
 
 // adminPickSeeded selects, for each site a seed entry's lookup found, its
 // newest such entry (by added_at, then site key) as seeded: the seed
@@ -55,7 +55,7 @@ func (r *AdminFeedRepository) CountPick(ctx context.Context) (map[string]int, er
 			(SELECT count(*) FROM candidates c WHERE EXISTS (SELECT 1 FROM seed_sites ss
 				JOIN lookups l ON l.site_key = ss.site_key WHERE l.site_id = c.site_id)),
 			(SELECT count(*) FROM candidates),
-			(SELECT count(DISTINCT f.site_id) FROM discover_skips k JOIN feeds f ON f.id = k.feed_id WHERE f.gone_at IS NULL)`
+			(SELECT count(DISTINCT f.site_id) FROM discover_skips k JOIN feeds f ON f.id = k.feed_id WHERE f.gone_at IS NULL AND f.owner_id IS NULL)`
 	var seeded, all, skipped int
 	if err := r.DB.QueryRowContext(ctx, stmt).Scan(&seeded, &all, &skipped); err != nil {
 		return nil, err

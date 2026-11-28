@@ -163,11 +163,12 @@ func (r *SiteRepository) MatchForSignup(ctx context.Context, candidates []string
 		)
 		SELECT c.n, s.id, s.host, s.url, s.title, s.description, s.created_at, s.updated_at
 		FROM c JOIN sites s ON s.host = c.key
+		WHERE s.host <> '` + rss.NewsletterSiteHost + `'
 		UNION ALL
 		SELECT n, id, host, url, title, description, created_at, updated_at FROM (
 			SELECT c.n, s.*, count(*) OVER (PARTITION BY c.n) AS same
 			FROM c JOIN sites s ON lower(btrim(s.title)) = lower(c.name)
-			WHERE c.name <> ''
+			WHERE c.name <> '' AND s.host <> '` + rss.NewsletterSiteHost + `'
 		) t WHERE same = 1`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, pq.Array(keys), pq.Array(names))
@@ -196,7 +197,7 @@ func (r *SiteRepository) MatchForSignup(ctx context.Context, candidates []string
 
 	stmt = `SELECT ` + qualifiedFeedColumns + `, EXISTS (SELECT 1 FROM discover_feeds d WHERE d.feed_id = f.id)
 		FROM feeds f
-		WHERE f.site_id = ANY($1) AND f.gone_at IS NULL`
+		WHERE f.site_id = ANY($1) AND f.gone_at IS NULL AND f.owner_id IS NULL`
 
 	frows, err := r.DB.QueryContext(ctx, stmt, pq.Array(siteIDs))
 	if err != nil {

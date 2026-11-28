@@ -793,6 +793,30 @@ func TestSettingsExportHandler(t *testing.T) {
 	)
 }
 
+func TestSettingsExportHandlerNewsletters(t *testing.T) {
+	const line = "Newsletters aren’t included"
+	tests := []struct {
+		name   string
+		domain string
+		sess   rss.Session
+		want   bool
+	}{
+		{"a reader with newsletters", "in.localhost", newsletterSession, true},
+		{"a reader without them", "in.localhost", settingsSession, false},
+		{"newsletters off", "", newsletterSession, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestServerConfig(t, Config{Port: 4000, Env: "development", NewsletterDomain: tt.domain}, Services{})
+			rr := httptest.NewRecorder()
+			s.sessionManager.LoadAndSave(http.HandlerFunc(s.settingsExportHandler)).ServeHTTP(rr, requestWithSession(tt.sess))
+			if got := strings.Contains(rr.Body.String(), line); got != tt.want {
+				t.Errorf("says newsletters aren't included: %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // parseOPML checks the export's status and headers and decodes its body.
 func parseOPML(t *testing.T, rr *httptest.ResponseRecorder) opmlDoc {
 	t.Helper()
@@ -866,6 +890,25 @@ func TestExportOPML(t *testing.T) {
 		}
 		if !reflect.DeepEqual(doc.Body, want) {
 			t.Errorf("outlines = %+v, want %+v", doc.Body, want)
+		}
+	})
+
+	t.Run("newsletter feeds are left out", func(t *testing.T) {
+		tag := rss.Tag{ID: "tag-reading", Name: "reading"}
+		subs := []rss.Subscription{
+			{Feed: rss.Feed{ID: "feed-1", Url: "https://a.example/feed", Title: "A"}, Tags: []rss.Tag{tag}},
+			{Feed: rss.Feed{ID: "feed-2", Url: "newsletter:feed-2", Title: "A newsletter", OwnerID: settingsSession.User.ID}, Tags: []rss.Tag{tag}},
+			{Feed: rss.Feed{ID: "feed-3", Url: "newsletter:feed-3", Title: "Another newsletter", OwnerID: settingsSession.User.ID}},
+		}
+		list := func(context.Context, string) ([]rss.Subscription, error) { return subs, nil }
+		for _, query := range []string{"tags=folders", "tags=ignore"} {
+			body := getOPMLQuery(t, query, list).Body.String()
+			if strings.Contains(body, "newsletter") {
+				t.Errorf("%q: the export lists a newsletter feed:\n%s", query, body)
+			}
+			if !strings.Contains(body, "https://a.example/feed") {
+				t.Errorf("%q: the export left out the web feed:\n%s", query, body)
+			}
 		}
 	})
 

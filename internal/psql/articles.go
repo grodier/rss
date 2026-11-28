@@ -331,6 +331,10 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCurso
 				AND a.timeline_at >= $%[1]d AND (a.timeline_at, a.id) > ($%[1]d, $%[2]d::uuid)`, len(*args)-1, len(*args))
 	}
 	where.WriteString(timelineWhere(filter, args, "sub", "a", "sub.feed_id") + sharedWhere(shared, "a"))
+	subs := ""
+	if shared {
+		subs = sharedSubscriptions
+	}
 	return `SELECT ` + qualifiedArticleColumns + `, ` + listFeedColumns(shared) + `
 		FROM subscriptions sub
 		CROSS JOIN LATERAL (
@@ -343,7 +347,7 @@ func timelineStmt(filter rss.TimelineFilter, shared bool, above rss.ArticleCurso
 			LIMIT $4
 		) a
 		JOIN feeds f ON f.id = a.feed_id
-		WHERE sub.user_id = $1
+		WHERE sub.user_id = $1` + subs + `
 		ORDER BY a.timeline_at DESC, a.id DESC
 		LIMIT $4`
 }
@@ -373,7 +377,7 @@ func earlierCopy(filter rss.TimelineFilter, shared bool, position string, args *
 					JOIN subscriptions sub2 ON sub2.user_id = sub.user_id AND sub2.feed_id = b.feed_id` + rows + `
 					WHERE b.canonical_url = a.canonical_url AND b.canonical_url <> ''
 						AND (b.timeline_at, b.id) < (` + position + `, a.id)` + raised +
-		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + `
+		timelineWhere(filter, args, "sub2", "b", "sub2.feed_id") + sharedWhere(shared, "b") + sharedCopy(shared, "b") + `
 				)`
 }
 
@@ -388,13 +392,36 @@ func listFeedColumns(shared bool) string {
 }
 
 // sharedWhere returns the condition a shared timeline adds on the articles
-// alias a: only articles with a link. "" unless shared.
+// alias a: only articles with a link. "" unless shared. A shared timeline
+// also leaves out newsletter feeds, which are private to their owner even on
+// their own shared timeline: sharedSubscriptions for timelineStmt, the feed
+// alias in starredStmt, and sharedCopy for earlierCopy.
 func sharedWhere(shared bool, a string) string {
 	if !shared {
 		return ""
 	}
 	return `
 				AND ` + a + `.url <> ''`
+}
+
+// sharedSubscriptions is the condition a shared timeline adds on the
+// subscriptions alias sub, outside timelineStmt's per-subscription LATERAL:
+// no newsletter feed. Filtering there keeps each feed's walk of
+// articles_feed_timeline_idx under its LIMIT; a condition on the articles
+// inside it doesn't (#846).
+const sharedSubscriptions = `
+		  AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.id = sub.feed_id AND o.owner_id IS NOT NULL)`
+
+// sharedCopy returns the condition earlierCopy adds on the copy alias b for
+// a shared timeline: never a newsletter's copy, so one never collapses a
+// public article away. "" unless shared. It's checked only for articles
+// flagged has_copies.
+func sharedCopy(shared bool, b string) string {
+	if !shared {
+		return ""
+	}
+	return `
+						AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.id = ` + b + `.feed_id AND o.owner_id IS NOT NULL)`
 }
 
 // scanArticleWithFeed scans a row of an article's columns (as scanArticle),

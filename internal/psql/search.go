@@ -43,7 +43,9 @@ func matchOrder(name string, n int) string {
 // #728), matches q at its start or a word's start. A host with one such site keeps it as a site: there are no groups
 // of one. Groups come largest first. With host set, only the sites whose
 // key's host is host come back, none grouped. The newsletters' internal
-// site (rss.NewsletterSiteHost) never matches.
+// site (rss.NewsletterSiteHost) never matches, and newsletter feeds (an
+// owner_id) are never matched or listed, wherever they are, so no one can
+// probe for another reader's newsletter by its title.
 func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, limit int) ([]rss.SiteWithFeeds, []rss.SiteGroup, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
@@ -62,7 +64,7 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, 
 			FROM sites s
 			WHERE (s.host = $2 OR s.title ILIKE $1 ESCAPE '\' OR s.host ILIKE $1 ESCAPE '\'
 			   OR s.description ILIKE $1 ESCAPE '\'
-			   OR EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id
+			   OR EXISTS (SELECT 1 FROM feeds f WHERE f.site_id = s.id AND f.owner_id IS NULL
 			              AND (f.title ILIKE $1 ESCAPE '\' OR f.url ILIKE $1 ESCAPE '\'
 			                   OR f.description ILIKE $1 ESCAPE '\')))
 			  AND ($7 = '' OR split_part(s.host, '/', 1) = $7)
@@ -118,7 +120,7 @@ func (r *SearchRepository) Search(ctx context.Context, q, siteKey, host string, 
 
 	feedStmt := `SELECT id, site_id, url, site_url, title, description, created_at
 		FROM feeds
-		WHERE site_id = ANY($1)
+		WHERE site_id = ANY($1) AND owner_id IS NULL
 		ORDER BY site_id, lower(title), url`
 
 	frows, err := r.DB.QueryContext(ctx, feedStmt, pq.Array(ids))

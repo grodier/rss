@@ -34,7 +34,7 @@ func (r *AdminFeedRepository) Site(ctx context.Context, id string) (rss.AdminSit
 
 	stmt := `SELECT ` + adminFeedRowColumns + `
 		FROM feeds f JOIN sites s ON s.id = f.site_id` + adminFeedSection + `
-		WHERE f.site_id = $1
+		WHERE f.site_id = $1 AND ` + adminFeedListed + `
 		ORDER BY f.title, f.url`
 	rows, err := r.DB.QueryContext(ctx, stmt, id)
 	if err != nil {
@@ -51,16 +51,17 @@ func (r *AdminFeedRepository) Site(ctx context.Context, id string) (rss.AdminSit
 	return out, rows.Err()
 }
 
-// adminSiteFeeds counts the feeds of the site aliased alias.
+// adminSiteFeeds counts the feeds of the site aliased alias, never a
+// newsletter feed.
 func adminSiteFeeds(alias string) string {
-	return `(SELECT count(*) FROM feeds sf WHERE sf.site_id = ` + alias + `.id)`
+	return `(SELECT count(*) FROM feeds sf WHERE sf.site_id = ` + alias + `.id AND sf.owner_id IS NULL)`
 }
 
 // adminSiteSubscribers counts the readers who subscribe to any feed of the
-// site aliased alias, each once.
+// site aliased alias, each once, newsletter feeds left out.
 func adminSiteSubscribers(alias string) string {
 	return `(SELECT count(DISTINCT ssub.user_id) FROM feeds sf
-		JOIN subscriptions ssub ON ssub.feed_id = sf.id WHERE sf.site_id = ` + alias + `.id)`
+		JOIN subscriptions ssub ON ssub.feed_id = sf.id WHERE sf.site_id = ` + alias + `.id AND sf.owner_id IS NULL)`
 }
 
 // adminSiteFilters are the site list's filters' conditions on sites s. A
@@ -70,7 +71,7 @@ var adminSiteFilters = map[string]string{
 	rss.AdminSitesNoIcon:       `NOT EXISTS (SELECT 1 FROM site_icons ni WHERE ni.site_id = s.id)`,
 	rss.AdminSitesLookupFailed: `EXISTS (SELECT 1 FROM lookups fl WHERE fl.site_key = s.host AND fl.status = 'failed')`,
 	rss.AdminSitesNoSubscribers: `NOT EXISTS (SELECT 1 FROM feeds sf
-		JOIN subscriptions ssub ON ssub.feed_id = sf.id WHERE sf.site_id = s.id)`,
+		JOIN subscriptions ssub ON ssub.feed_id = sf.id WHERE sf.site_id = s.id AND sf.owner_id IS NULL)`,
 }
 
 // adminSiteSorts are the site list's orders, as adminFeedSorts are the feed

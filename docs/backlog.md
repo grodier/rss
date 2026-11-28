@@ -106,7 +106,7 @@ The decisions are under "Admin" and "Observability" in decisions.md.
   `users.disabled_at`, checked in `authenticate` (a suspended reader is logged out and can't log in), and refusing waitlist joins and signups from an address or domain.
 - [ ] **Say how many newsletter feeds exist on the admin's feed list** (deferred from #846).
   #846 leaves newsletter feeds out of the feed list and its counts; a line saying how many exist, never which, would show the feature's use without showing anyone's newsletters.
-  It's admin UI with no settled place yet: the Overview is another candidate.
+  It's admin UI with no settled place yet: the Overview is another candidate, whose Feeds, Subscribed feeds and Sites counts still include newsletter feeds and the internal site, so they no longer match the feed list's "All".
 - [ ] **Runtime settings.**
   A settings table the admin edits: signup open or closed, and debug mode's accounts, replacing `RSS_DEBUG_EMAILS` (no flag-or-setting fallback).
 - [ ] **Pause a background runner from the admin** (after runtime settings): a setting each runner checks before claiming, so a bad deploy or a misbehaving host can be stopped without a redeploy.
@@ -848,7 +848,8 @@ Newsletters (planned in #839):
   *Signal:* newsletter feeds' articles become a large share of the `articles` table's size, or the database's disk.
   *Fix:* keep newsletter articles for less time than others (with "how long to keep articles" under "Feed ingestion"), or store the body once per content hash with the personal links kept apart.
 - [ ] **Queries that list feeds across readers leave newsletter feeds out** (#846).
-  Search, Discover, site pages, enrichment and the admin's lists gain `owner_id IS NULL`; while newsletter feeds are few it costs nothing.
+  Search, sign-up matching, site pages, enrichment, shared timelines and the admin's lists gain `owner_id IS NULL`; while newsletter feeds are few it costs nothing.
+  A shared timeline leaves out newsletter subscriptions before each feed's walk of `articles_feed_timeline_idx` (`sharedSubscriptions`), since a condition on the articles inside the walk made it read every article of every feed (about 36 ms against 2 ms with 20 feeds of 2,000 articles, measured in #846).
   *Signal:* those queries' plans filter out many owned rows, or newsletter feeds outnumber web feeds.
   Most leave out the internal `newsletters` site by host, which costs nothing; the feed-level conditions are the ones to watch.
   *Fix:* partial indexes `WHERE owner_id IS NULL` on the indexes those queries use.

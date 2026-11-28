@@ -67,6 +67,17 @@ func (r *StarRepository) ListStarred(ctx context.Context, userID string, filter 
 	return items, nil
 }
 
+// sharedStarred returns the condition a shared starred-only timeline adds
+// on the feed alias f: no newsletter feed's article (see sharedWhere). ""
+// unless shared.
+func sharedStarred(shared bool) string {
+	if !shared {
+		return ""
+	}
+	return `
+		  AND f.owner_id IS NULL`
+}
+
 // starredStmt returns ListStarred's query for filter, appending filter's
 // parameters to args as timelineStmt does; it selects starred_at after the
 // feed's columns. shared is as for timelineStmt.
@@ -81,7 +92,7 @@ func starredStmt(filter rss.TimelineFilter, shared bool, args *[]any) string {
 		JOIN feeds f ON f.id = a.feed_id
 		LEFT JOIN subscriptions sub ON sub.user_id = s.user_id AND sub.feed_id = a.feed_id
 		WHERE s.user_id = $1
-		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, args, "sub", "a", "a.feed_id") + sharedWhere(shared, "a") + `
+		  AND ($2::timestamptz IS NULL OR (s.starred_at, s.article_id) < ($2, $3::uuid))` + timelineWhere(filter, args, "sub", "a", "a.feed_id") + sharedWhere(shared, "a") + sharedStarred(shared) + `
 		ORDER BY s.starred_at DESC, s.article_id DESC
 		LIMIT $4`
 }

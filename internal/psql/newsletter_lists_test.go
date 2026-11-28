@@ -270,3 +270,87 @@ func TestNewsletterFeedsNotInAdminFeedList(t *testing.T) {
 		}
 	}
 }
+
+func TestNewsletterFeedsNotStarredShared(t *testing.T) {
+	db := psqltest.NewDB(t)
+	owner := newTestUser(t, db)
+	canonical := fmt.Sprintf("https://example.com/story-%d", psqltest.Unique())
+	letter := newOwnedFeed(t, db, owner,
+		rss.Article{ExternalID: "n1", URL: canonical + "?u=personal", CanonicalURL: canonical, Title: "A story the web has too"},
+		rss.Article{ExternalID: "n2", URL: "https://example.com/only-in-the-letter?u=personal", Title: "Only in the letter"})
+	web := newSubscribedFeed(t, db, owner)
+	if _, err := saveArticles(t.Context(), db, web.ID, []rss.Article{{ExternalID: "w1", URL: canonical, CanonicalURL: canonical, Title: "From the web"}}); err != nil {
+		t.Fatalf("saveArticles: %v", err)
+	}
+	letterIDs := []string{articleID(t, db, letter.ID, "n1"), articleID(t, db, letter.ID, "n2")}
+	// Starred through the newsletter: the star is on the newsletter's copy.
+	for _, id := range letterIDs {
+		if err := NewStarRepository(db).Star(t.Context(), owner, id); err != nil {
+			t.Fatalf("Star: %v", err)
+		}
+	}
+
+	items, err := NewArticleRepository(db).ListShared(t.Context(), owner, rss.TimelineFilter{StarredOnly: true}, 50)
+	if err != nil {
+		t.Fatalf("ListShared: %v", err)
+	}
+	for _, it := range items {
+		if slices.Contains(letterIDs, it.Article.ID) || it.Feed.ID == letter.ID {
+			t.Errorf("the starred-only shared timeline lists the newsletter's article %q", it.Article.Title)
+		}
+	}
+}
+
+func TestNewsletterFeedsNotOnAdminSitePage(t *testing.T) {
+	db := psqltest.NewDB(t)
+	repo := NewAdminFeedRepository(db)
+	owner := newTestUser(t, db)
+	siteID := newTestSite(t, db)
+	owned := newOwnedFeedOn(t, db, owner, siteID, "A newsletter")
+	web := newTestFeedOn(t, db, siteID)
+
+	site, err := repo.Site(t.Context(), siteID)
+	if err != nil {
+		t.Fatalf("Site: %v", err)
+	}
+	for _, row := range site.Feeds {
+		if row.Feed.ID == owned.ID {
+			t.Error("the admin's site page lists the newsletter feed")
+		}
+	}
+	if len(site.Feeds) != 1 || site.Feeds[0].Feed.ID != web.ID {
+		t.Errorf("the admin's site page has %d feeds, want the web feed alone", len(site.Feeds))
+	}
+
+	// The site list's counts leave it out too: one feed, and no subscribers
+	// (only the owner follows the newsletter).
+	rows, err := repo.ListSites(t.Context(), rss.AdminSiteQuery{Filter: rss.AdminSitesNoSubscribers, Sort: rss.AdminSitesByHost, Q: site.Site.Host, Limit: 10})
+	if err != nil {
+		t.Fatalf("ListSites: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("ListSites(no subscribers) = %d sites, want the site", len(rows))
+	}
+	if rows[0].Feeds != 1 || rows[0].Subscribers != 0 {
+		t.Errorf("the site's counts = %d feeds, %d subscribers; want 1 and 0", rows[0].Feeds, rows[0].Subscribers)
+	}
+}
+
+func TestSignupMatchesASiteTitledNewsletters(t *testing.T) {
+	db := psqltest.NewDB(t)
+	newOwnedFeed(t, db, newTestUser(t, db))
+	siteID := newTestSite(t, db)
+	if _, err := db.Exec(`UPDATE sites SET title = 'Newsletters' WHERE id = $1`, siteID); err != nil {
+		t.Fatal(err)
+	}
+	web := newTestFeedOn(t, db, siteID)
+
+	// The internal site, also titled "Newsletters", doesn't tie with it.
+	matches, err := NewSiteRepository(db).MatchForSignup(t.Context(), []string{"Newsletters"})
+	if err != nil {
+		t.Fatalf("MatchForSignup: %v", err)
+	}
+	if m := matches[0]; m.Site == nil || m.Site.ID != siteID || m.Feed == nil || m.Feed.ID != web.ID {
+		t.Errorf("MatchForSignup(\"Newsletters\") = %+v, want the web site %s and its feed", m, siteID)
+	}
+}

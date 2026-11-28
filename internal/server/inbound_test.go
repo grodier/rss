@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -429,5 +431,57 @@ func TestParseInboundSignature(t *testing.T) {
 				t.Errorf("ok = %v, want %v", ok, tt.wantOK)
 			}
 		})
+	}
+}
+
+// inboundSignatureFixture is where TestInboundSignatureFixture writes signed
+// requests, for infra/email-worker/worker.test.ts to check that the Worker
+// signs the same: Go is the spec.
+const inboundSignatureFixture = "../../infra/email-worker/testdata/inbound-signature.json"
+
+// TestInboundSignatureFixture signs a few messages as inboundMAC does and
+// checks infra/email-worker/testdata/inbound-signature.json holds the same
+// X-Inbound-Signature values; with -update it writes the file instead.
+func TestInboundSignatureFixture(t *testing.T) {
+	type signed struct {
+		Name      string `json:"name"`
+		Secret    string `json:"secret"`
+		T         string `json:"t"`
+		To        string `json:"to"`
+		Body      []byte `json:"body"` // base64 in JSON, so any bytes survive
+		Signature string `json:"signature"`
+	}
+	cases := []signed{
+		{Name: "a plain message", Secret: testInboundSecret, T: "1764201600", To: "sam.k7x2m9@" + testInboundDomain,
+			Body: []byte("From: news@example.com\r\nTo: sam.k7x2m9@in.localhost\r\nSubject: Hello\r\n\r\nHi.\r\n")},
+		{Name: "the recipient as sent, with case and a tag", Secret: testInboundSecret, T: "1764201601", To: "Sam.K7X2M9+news@In.Localhost",
+			Body: []byte("Subject: Tagged\r\n\r\nHi.\r\n")},
+		{Name: "UTF-8 and 8-bit bytes", Secret: "another secret, with ünïcode", T: "1764201602", To: "a.b@" + testInboundDomain,
+			Body: append([]byte("Subject: =?UTF-8?Q?caf=C3=A9?=\r\n\r\ncafé "), 0x00, 0x80, 0xff, '\r', '\n')},
+		{Name: "an empty body", Secret: testInboundSecret, T: "1764201603", To: "a.b@" + testInboundDomain, Body: []byte{}},
+	}
+	for i, c := range cases {
+		cases[i].Signature = "t=" + c.T + ",v1=" + hex.EncodeToString(inboundMAC(c.Secret, c.T, c.To, c.Body))
+	}
+
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(cases); err != nil {
+		t.Fatal(err)
+	}
+	if *updateFixtures {
+		if err := os.WriteFile(inboundSignatureFixture, b.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	got, err := os.ReadFile(inboundSignatureFixture)
+	if err != nil {
+		t.Fatalf("%v; run: go test ./internal/server -run TestInboundSignatureFixture -update", err)
+	}
+	if !bytes.Equal(got, b.Bytes()) {
+		t.Errorf("%s doesn't match inboundMAC; run: go test ./internal/server -run TestInboundSignatureFixture -update", inboundSignatureFixture)
 	}
 }

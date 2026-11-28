@@ -27,6 +27,10 @@ locals {
   # The domain of readers' newsletter addresses: both services refuse it as
   # an account's email (#865), and www gives readers addresses there (#827).
   newsletter_domain = "in.paperround.app"
+
+  # rss's canonical URL: its RSS_BASE_URL, and where the inbound email Worker
+  # posts (email.tf), so redirectToCanonicalHost never redirects it.
+  app_url = "https://paperround.app"
 }
 
 resource "render_web_service" "rss" {
@@ -68,7 +72,7 @@ resource "render_web_service" "rss" {
     PORT     = { value = "8080" }
     # Email (see "Domain and email" in infra/README.md); the rest of the mail
     # settings are in local.mail_env_vars.
-    RSS_BASE_URL = { value = "https://paperround.app" }
+    RSS_BASE_URL = { value = local.app_url }
     # Readers' newsletter addresses (see local.newsletter_domain).
     RSS_NEWSLETTER_DOMAIN = { value = local.newsletter_domain }
   })

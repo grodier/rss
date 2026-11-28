@@ -13,6 +13,14 @@ updates:
       vite:
         patterns: ["vite", "vitest", "@vitest/*"]
 
+  - package-ecosystem: npm
+    directory: /infra/email-worker
+    schedule:
+      interval: weekly
+    groups:
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

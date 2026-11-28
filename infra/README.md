@@ -11,6 +11,7 @@ Terraform doesn't own these things that change outside it, and ignores them:
 - **`RSS_SMTP_PASSWORD`**, set in Render's dashboard on both services (see "Domain and email").
 - **`RSS_SECRET_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin").
 - **`RSS_INBOUND_SECRET`** on `rss`, set in Render's dashboard (see "Inbound email").
+- **`INBOUND_SECRET`** on the `rss-inbound-email` Worker, set with Wrangler or Cloudflare's dashboard (see "Inbound email").
 - **`RSS_RENDER_API_KEY`** on `rss-admin`, set in Render's dashboard (see "The admin's Render API key").
 - **Edge caching**, set in Render's dashboard (see "Edge caching").
 - **The admin's `onrender.com` subdomain, disabled** in Render's dashboard: the provider has no attribute for it (see "The admin").
@@ -24,6 +25,8 @@ The accounts, buckets, tokens and GitHub settings from #208, and Terraform 1.10 
 Since the first apply (#214), applies run only from GitHub Actions (see "Approving infrastructure applies").
 Locally, run `plan` and `output`, never `apply`.
 Take every value from your password manager, never from a file in the repository:
+
+Terraform reads the email Worker's build, so run `make email-worker` first (from the repository's root).
 
 ```sh
 export AWS_ACCESS_KEY_ID=...        # the rss-tfstate R2 token's Access Key ID
@@ -378,13 +381,39 @@ If connections to port 465 time out anyway, Resend also listens on 2465 (`RSS_SM
 
 `rss` receives readers' newsletters at `POST /inbound/email`, signed with `RSS_INBOUND_SECRET` (see "Inbound email" in [`docs/architecture.md`](../docs/architecture.md)).
 It's set in Render's dashboard and ignored by Terraform, so it never lands in the state, and `www` refuses to start without it while `RSS_NEWSLETTER_DOMAIN` is set.
-The mail adapter that posts there (Cloudflare's Worker, #869) holds the same value.
+
+Mail reaches it through Cloudflare Email Routing on `in.paperround.app` (`email.tf`): the zone's catch-all rule runs the `rss-inbound-email` Worker (`email-worker/worker.ts`, built by `tsc` into `email-worker/dist/worker.js`, which Terraform uploads), which signs each message with its own `INBOUND_SECRET`, the same value, and posts it to `https://paperround.app/inbound/email`.
+It answers the sender from the app's status, during delivery, so we never send bounces: 202 accepts, 404 rejects with "550 5.1.1 No such recipient", and 401, 429 and 5xx throw, which Cloudflare answers with a temporary failure, so the sender retries.
+Without posting, it rejects mail to addresses outside `in.paperround.app` (550), mail whose envelope sender is at `paperround.app` or a subdomain (550 5.7.1), and messages over 5 MiB (552).
+Its logs (the Worker's **Observability** tab in Cloudflare's dashboard) show each answer's status, never an address.
+Terraform reads the build, so CI and `infra.yml` run `npm ci` and `npm run build` in `email-worker/` before Terraform; locally, run `make email-worker` before `terraform plan` (see "Running Terraform locally").
+
+### Setting up inbound email
+
+1. **Cloudflare API token:** on the account-owned `rss-terraform` token, add **Workers Scripts: Edit** for the account, and, for the zone `paperround.app`, **Email Routing Rules: Edit** and **Zone Settings: Edit** (Email Routing's settings and DNS).
+2. **Apply** the PR. Then, in Cloudflare's dashboard, **Email → Email Routing** for `paperround.app` should list `in.paperround.app` with its records locked, and the catch-all rule sending to `rss-inbound-email`.
+3. **The Worker's secret:** set it as in "Setting or rotating it". Until it's set, the Worker throws, so mail is deferred, not lost.
+4. **Test sends:** see "Test sends".
 
 ### Setting or rotating it
 
 1. Generate it straight into 1Password: `op item create --vault rss --category "API Credential" --title rss-inbound "secret[password]=$(openssl rand -hex 32)"` (to rotate, edit that item's value instead).
 2. Set `RSS_INBOUND_SECRET` to it on `rss`'s **Environment** page (saving redeploys).
-3. Once the adapter exists, give it the same value; between the two steps its posts are refused with a 401, which it answers with a temporary failure, so senders retry later.
+3. Set the Worker's `INBOUND_SECRET` to the same value: in Cloudflare's dashboard, **Workers & Pages → rss-inbound-email → Settings → Variables and Secrets**, add it as a **Secret** (or `op read "op://rss/rss-inbound/secret" | npx wrangler secret put INBOUND_SECRET --name rss-inbound-email`).
+   Terraform keeps it on every upload (`keep_bindings`) and never reads its value.
+   Between steps 2 and 3 the app answers the Worker's posts with a 401, which the Worker turns into a temporary failure, so senders retry later.
+
+### Test sends
+
+Send while the newsletter runner (#829) doesn't exist yet, so the raw messages stay in `inbound_emails.raw` to read; never commit them, they hold real addresses.
+
+1. From a personal account, send an email to a test reader's address (a reader with newsletters, from Settings › Newsletters): an `inbound_emails` row appears, and the Worker's logs show `inbound: 202`.
+2. Send one to an unknown address at `in.paperround.app`: it bounces with 550 5.1.1, and the Worker's logs show `inbound: 404`.
+   `rss`'s request log shows `POST /inbound/email` with no address.
+3. Set up auto-forwarding from a Gmail account to the test reader's address (the forwarding code arrives as its own email) and forward one newsletter.
+4. The deferral check: point the Worker at a URL that answers 503 (edit `INBOUND_URL` in the dashboard; the next apply puts it back), or send during a deploy, and send one: the sender should report a delay, not a bounce, and deliver it once the Worker is back.
+   If Cloudflare bounces it instead, stop: the fallback is the Worker writing messages to an R2 bucket the app reads.
+5. Record what the messages carry in `docs/decisions.md` under "Newsletters": `Authentication-Results`' authserv-id, which of `dmarc=`, `dkim=`, `spf=` and `arc=` it reports and where it sits among the headers, and what the Gmail forward's `ARC-Authentication-Results` carry; and whether a throwing Worker defers mail.
 
 ## Edge caching
 

@@ -135,6 +135,38 @@ jobs:
       - name: build
         run: npm run build
 
+  # The inbound email Worker's own checks: types, formatting, tests and the
+  # build (infra/email-worker).
+  email-worker:
+    name: email-worker # a required status check; don't rename casually
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: infra/email-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: infra/email-worker/.node-version
+          cache: npm
+          cache-dependency-path: infra/email-worker/package-lock.json
+
+      - name: npm ci
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: format
+        run: npm run format:check
+
+      - name: test
+        run: npm test
+
+      - name: build
+        run: npm run build
+
   # Checks infra/ without credentials or state: -backend=false skips the R2 backend.
   terraform:
     name: terraform # a required status check; don't rename casually
@@ -149,6 +181,15 @@ jobs:
 
       - name: terraform fmt
         run: terraform fmt -check -recursive infra
+
+      # Terraform reads the Worker's build (email.tf).
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: infra/email-worker/.node-version
+          cache: npm
+          cache-dependency-path: infra/email-worker/package-lock.json
+      - name: build the email Worker
+        run: npm --prefix infra/email-worker ci && npm --prefix infra/email-worker run build
 
       - name: terraform init
         run: terraform -chdir=infra init -backend=false

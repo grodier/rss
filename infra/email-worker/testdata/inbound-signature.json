@@ -1,0 +1,34 @@
+[
+  {
+    "name": "a plain message",
+    "secret": "inbound-test-secret",
+    "t": "1764201600",
+    "to": "sam.k7x2m9@in.localhost",
+    "body": "RnJvbTogbmV3c0BleGFtcGxlLmNvbQ0KVG86IHNhbS5rN3gybTlAaW4ubG9jYWxob3N0DQpTdWJqZWN0OiBIZWxsbw0KDQpIaS4NCg==",
+    "signature": "t=1764201600,v1=8e419417831f8fef9c305456798cc036592eab60a9ef4828015cbc0df40ab323"
+  },
+  {
+    "name": "the recipient as sent, with case and a tag",
+    "secret": "inbound-test-secret",
+    "t": "1764201601",
+    "to": "Sam.K7X2M9+news@In.Localhost",
+    "body": "U3ViamVjdDogVGFnZ2VkDQoNCkhpLg0K",
+    "signature": "t=1764201601,v1=da2260549d63f045ff028af4435593789161187370795e9f6cbb57aec9875b5f"
+  },
+  {
+    "name": "UTF-8 and 8-bit bytes",
+    "secret": "another secret, with ünïcode",
+    "t": "1764201602",
+    "to": "a.b@in.localhost",
+    "body": "U3ViamVjdDogPT9VVEYtOD9RP2NhZj1DMz1BOT89DQoNCmNhZsOpIACA/w0K",
+    "signature": "t=1764201602,v1=7008c55dda6d0445b06ad9ba4c3fd2eb1658b1cd29f8dfc314efe9bae0802e15"
+  },
+  {
+    "name": "an empty body",
+    "secret": "inbound-test-secret",
+    "t": "1764201603",
+    "to": "a.b@in.localhost",
+    "body": "",
+    "signature": "t=1764201603,v1=f3163a5ffcfdc7b00ddc1fb7deb730924426d00924b8ce7ab1f371059428685b"
+  }
+]

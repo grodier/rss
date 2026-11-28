@@ -5,3 +5,7 @@
 # The frontend build (see web/).
 web/node_modules/
 web/dist/
+
+# The inbound email Worker's build (see infra/email-worker/).
+infra/email-worker/node_modules/
+infra/email-worker/dist/

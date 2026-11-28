@@ -72,7 +72,7 @@ func TestSiteRepositoryRekey(t *testing.T) {
 	}
 	rekey := func(version int) RekeyResult {
 		t.Helper()
-		res, err := sites.Rekey(ctx, version, discovery.FeedSiteKey)
+		res, err := sites.Rekey(ctx, version, discovery.FeedSiteKey, discovery.AliasHosts())
 		if err != nil {
 			t.Fatalf("Rekey(%d): %v", version, err)
 		}
@@ -105,8 +105,20 @@ func TestSiteRepositoryRekey(t *testing.T) {
 	fay := addFeed(pathSite, "https://solo.example/@fay.rss", "")
 	elsewhere := addFeed(addSite("feeds.other.example"), "https://feeds.other.example/x.xml", "https://other.example/@gus")
 
+	// Alias hosts' sites (#851): a subreddit's feed on the bare alias host,
+	// a channel's feed on an alias site with a path whose main site exists,
+	// and a Tumblr blog's feed on tumblr.com, beside tumblr.com's own.
+	oldReddit := addSite("old.reddit.com")
+	golang := addFeed(oldReddit, "https://old.reddit.com/r/golang/.rss", "https://old.reddit.com/r/golang/")
+	mobileChannel := addSite("m.youtube.com/@chan")
+	chanID := addSite("youtube.com/@chan")
+	channel := addFeed(mobileChannel, "https://m.youtube.com/feeds/videos.xml?user=chan", "https://m.youtube.com/@chan")
+	tumblr := addSite("tumblr.com")
+	staff := addFeed(tumblr, "https://staff.tumblr.com/rss", "https://staff.tumblr.com/")
+	tumblrOwn := addFeed(tumblr, "https://www.tumblr.com/feed.xml", "https://www.tumblr.com/")
+
 	res := rekey(1)
-	if want := (RekeyResult{Feeds: 5, Created: 4, Deleted: 1}); res != want {
+	if want := (RekeyResult{Feeds: 8, Created: 6, Deleted: 3}); res != want {
 		t.Errorf("Rekey = %+v, want %+v", res, want)
 	}
 
@@ -125,6 +137,33 @@ func TestSiteRepositoryRekey(t *testing.T) {
 		}
 		if s := siteOf(cy); s.ID != cyID {
 			t.Errorf("cy's feed is on site %s, want the existing %s", s.ID, cyID)
+		}
+	})
+
+	t.Run("feeds on alias hosts move to their main host's sites", func(t *testing.T) {
+		for _, tt := range []struct{ feed, host, url string }{
+			{golang, "reddit.com/r/golang", "https://www.reddit.com/r/golang"},
+			{channel, "youtube.com/@chan", "https://youtube.com/@chan/"}, // the existing site keeps its URL
+			{staff, "staff.tumblr.com", "https://staff.tumblr.com/"},
+		} {
+			s := siteOf(tt.feed)
+			if s.Host != tt.host || s.URL != tt.url {
+				t.Errorf("feed %s: site %s at %s, want %s at %s", tt.feed, s.Host, s.URL, tt.host, tt.url)
+			}
+		}
+		if s := siteOf(channel); s.ID != chanID {
+			t.Errorf("the channel's feed is on site %s, want the existing %s", s.ID, chanID)
+		}
+		for key, root := range map[string]string{"reddit.com/r/golang": "https://www.reddit.com/r/golang", "staff.tumblr.com": "https://staff.tumblr.com/"} {
+			if l, ok := lookupOf(key); !ok || l != (lookup{url: root, status: "pending", priority: 1, homePage: true}) {
+				t.Errorf("lookup of %s = %+v (found %v), want pending at priority 1 on %s", key, l, ok, root)
+			}
+		}
+		if siteExists(oldReddit) || siteExists(mobileChannel) {
+			t.Error("an emptied alias site wasn't deleted")
+		}
+		if s := siteOf(tumblrOwn); s.ID != tumblr {
+			t.Errorf("tumblr.com's own feed moved to %s", s.Host)
 		}
 	})
 

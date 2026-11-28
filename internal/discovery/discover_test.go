@@ -1107,3 +1107,51 @@ func TestDiscoverPlatformPageRefused(t *testing.T) {
 		}
 	})
 }
+
+// Platforms' alias hosts and Tumblr blogs' addresses on tumblr.com name the
+// site at its main address (#851).
+func TestDiscoverHostAliases(t *testing.T) {
+	t.Run("a Tumblr blog's address on tumblr.com", func(t *testing.T) {
+		// The input is rewritten to the blog's host, which here redirects
+		// back to its page on tumblr.com.
+		page := htmlResp(`<title>Tumblr Staff</title>
+			<link rel="alternate" type="application/rss+xml" href="https://staff.tumblr.com/rss">`)
+		page.URL = mustURL(t, "https://www.tumblr.com/staff")
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://staff.tumblr.com/":    page,
+			"https://staff.tumblr.com/rss": rssResp("Tumblr Staff", "https://staff.tumblr.com/"),
+		}}
+		u, err := ParseInput("tumblr.com/staff")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Site.Key != "staff.tumblr.com" || res.Site.URL != "https://staff.tumblr.com/" {
+			t.Errorf("Site = %+v, want staff.tumblr.com at https://staff.tumblr.com/", res.Site)
+		}
+		assertURLs(t, res.Feeds, "https://staff.tumblr.com/rss")
+	})
+
+	t.Run("a feed listed at an alias address", func(t *testing.T) {
+		f := &fakeFetcher{responses: map[string]*fetch.Response{
+			"https://www.reddit.com/r/golang": htmlResp(`<title>r/golang</title>
+				<link rel="alternate" type="application/rss+xml" href="https://old.reddit.com/r/golang/.rss">`),
+			"https://old.reddit.com/r/golang/.rss": rssResp("golang", "https://old.reddit.com/r/golang/"),
+		}}
+		u, err := ParseInput("old.reddit.com/r/golang")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := (&Discoverer{Fetcher: f}).Discover(context.Background(), u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Site.Key != "reddit.com/r/golang" || res.Site.URL != "https://www.reddit.com/r/golang" {
+			t.Errorf("Site = %+v, want reddit.com/r/golang at https://www.reddit.com/r/golang", res.Site)
+		}
+		assertURLs(t, res.Feeds, "https://www.reddit.com/r/golang/.rss")
+	})
+}

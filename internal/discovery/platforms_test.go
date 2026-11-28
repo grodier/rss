@@ -23,6 +23,15 @@ func TestPlatforms(t *testing.T) {
 		if got := Platform(p.host + "/x"); got != p.name {
 			t.Errorf("Platform(%q) = %q, want %q", p.host+"/x", got, p.name)
 		}
+		if (len(p.aliases) > 0) != (p.mainHost != "") || (p.mainHost != "" && keyHost(&url.URL{Host: p.mainHost}) != p.host) {
+			t.Errorf("host %q: aliases %q with main host %q, want both or neither, the main host keying as the host", p.host, p.aliases, p.mainHost)
+		}
+		for _, a := range p.aliases {
+			if a != strings.ToLower(a) || strings.HasPrefix(a, "www.") || seen[a] || platformsByHost[a].host != "" {
+				t.Errorf("alias %q: want a lowercase host without a leading www., listed once, without an entry of its own", a)
+			}
+			seen[a] = true
+		}
 	}
 }
 

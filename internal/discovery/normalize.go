@@ -25,7 +25,9 @@ var spaceAroundSeparators = regexp.MustCompile(`\s*([./:])\s*`)
 // removed ("npr. org" -> npr.org); any other whitespace means q isn't an
 // address, so free text isn't glued into one. It returns ErrNotURL if q is not
 // a website address: anything other than http(s), userinfo, IP literals and
-// hosts that aren't a dotted domain name are rejected.
+// hosts that aren't a dotted domain name are rejected. An address on a
+// platform's alias host, or a Tumblr blog's on tumblr.com, is rewritten to
+// its main address (canonicalAddress), so nothing fetches or stores the alias.
 func ParseInput(q string) (*url.URL, error) {
 	q = spaceAroundSeparators.ReplaceAllString(strings.TrimSpace(q), "$1")
 	if q == "" || len(q) > maxInputLen || strings.IndexFunc(q, unicode.IsSpace) >= 0 {
@@ -47,15 +49,19 @@ func ParseInput(q string) (*url.URL, error) {
 	}
 
 	canonicalize(u)
+	canonicalAddress(u)
 	return u, nil
 }
 
 // CanonicalFeedURL returns the form used as feeds.url: lowercase scheme and
 // host, default port removed, fragment removed, empty path -> "/". Path and
-// query are otherwise kept as-is. Does not change http <-> https.
+// query are otherwise kept as-is. Does not change http <-> https. An alias
+// host becomes its platform's main host (old.reddit.com -> www.reddit.com),
+// so a feed has one URL whichever address it was found at.
 func CanonicalFeedURL(u *url.URL) string {
 	c := *u
 	canonicalize(&c)
+	aliasHost(&c)
 	return c.String()
 }
 

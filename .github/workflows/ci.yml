@@ -138,7 +138,7 @@ jobs:
   # The inbound email Worker's own checks: types, formatting, tests and the
   # build (infra/email-worker).
   email-worker:
-    name: email-worker
+    name: email-worker # a required status check; don't rename casually
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:

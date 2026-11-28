@@ -388,9 +388,13 @@ func (s *Server) changePasswordWellKnownHandler(w http.ResponseWriter, r *http.R
 }
 
 // settingsExportHandler shows the export's options; its form downloads
-// the file from exportOPMLHandler.
+// the file from exportOPMLHandler. A reader with newsletters is told they
+// aren't included.
 func (s *Server) settingsExportHandler(w http.ResponseWriter, r *http.Request) {
-	data := struct{ Nav navData }{Nav: s.nav(r, "settings")}
+	data := struct {
+		Nav         navData
+		Newsletters bool
+	}{Nav: s.nav(r, "settings"), Newsletters: s.hasFeature(r, rss.FeatureNewsletters)}
 	if err := s.renderHTML(w, http.StatusOK, "settings_export.html", data); err != nil {
 		s.serverErrorHTML(w, r, err)
 	}
@@ -423,7 +427,9 @@ type opmlOutline struct {
 
 // exportOPMLHandler downloads the user's subscriptions, gone feeds included,
 // as an OPML file: with ?tags=ignore a flat list of feeds, else a folder per
-// tag, ordered by name, then the untagged feeds.
+// tag, ordered by name, then the untagged feeds. Newsletter feeds are left
+// out: they arrive by email, and their newsletter: URLs mean nothing to
+// another reader.
 func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 	userID, _ := s.authenticatedUserID(r)
 	subs, err := s.services.SubscriptionService.ListByUser(r.Context(), userID)
@@ -431,6 +437,7 @@ func (s *Server) exportOPMLHandler(w http.ResponseWriter, r *http.Request) {
 		s.serverErrorHTML(w, r, err)
 		return
 	}
+	subs = slices.DeleteFunc(subs, func(sub rss.Subscription) bool { return sub.Feed.IsNewsletter() })
 
 	now := time.Now().UTC()
 	doc := opmlDoc{

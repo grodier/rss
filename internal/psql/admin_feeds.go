@@ -96,6 +96,10 @@ func (s scanTail) Scan(dest ...any) error {
 	return s.row.Scan(append(dest, s.tail...)...)
 }
 
+// adminFeedListed is the condition that feed f is in the admin's feed
+// list: every feed but newsletter feeds, which the admin never sees.
+const adminFeedListed = `f.owner_id IS NULL`
+
 // adminFeedSearch is the condition that feeds f of sites s match q (any
 // case, in the title, URL or site's host) with q's pattern as argument n.
 func adminFeedSearch(n int) string {
@@ -113,7 +117,7 @@ func (r *AdminFeedRepository) CountFeeds(ctx context.Context, q string) (map[str
 	}
 	stmt := `SELECT ` + strings.Join(cols, ", ") + `
 		FROM feeds f JOIN sites s ON s.id = f.site_id
-		WHERE $1 = '' OR ` + adminFeedSearch(2)
+		WHERE ` + adminFeedListed + ` AND ($1 = '' OR ` + adminFeedSearch(2) + `)`
 
 	counts := make([]int, len(keys))
 	dest := make([]any, len(keys))
@@ -146,7 +150,7 @@ func (r *AdminFeedRepository) ListFeeds(ctx context.Context, q rss.AdminFeedQuer
 	}
 
 	args := []any{q.Limit}
-	where := []string{filter}
+	where := []string{adminFeedListed, filter}
 	if q.Q != "" {
 		args = append(args, likePattern(q.Q))
 		where = append(where, adminFeedSearch(len(args)))

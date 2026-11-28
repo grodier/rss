@@ -104,6 +104,9 @@ The decisions are under "Admin" and "Observability" in decisions.md.
 
 - [ ] **Suspend accounts and block addresses.**
   `users.disabled_at`, checked in `authenticate` (a suspended reader is logged out and can't log in), and refusing waitlist joins and signups from an address or domain.
+- [ ] **Say how many newsletter feeds exist on the admin's feed list** (deferred from #846).
+  #846 leaves newsletter feeds out of the feed list and its counts; a line saying how many exist, never which, would show the feature's use without showing anyone's newsletters.
+  It's admin UI with no settled place yet: the Overview is another candidate.
 - [ ] **Runtime settings.**
   A settings table the admin edits: signup open or closed, and debug mode's accounts, replacing `RSS_DEBUG_EMAILS` (no flag-or-setting fallback).
 - [ ] **Pause a background runner from the admin** (after runtime settings): a setting each runner checks before claiming, so a bad deploy or a misbehaving host can be stopped without a redeploy.
@@ -257,6 +260,9 @@ Each with when it pays off:
   #836 records a site's newsletter when the site is next looked up, which only happens when someone asks; queueing a re-lookup of the catalog's sites at the seed list's priority would fill them in.
 - [ ] **Newsletters in Discover's catalog.**
   Sites with a newsletter #836 found could be listed in Discover's sections as newsletters, with the same copy-and-sign-up row.
+- [ ] **A story starred through a newsletter is missing from the starred-only shared timeline** (found in #846).
+  One star covers every copy of a story (`markArticle`), and a shared timeline never shows a newsletter's article, so a story the reader starred through their newsletter's copy is left out even when a feed they follow has a public copy.
+  Fix: in `starredStmt` with shared, show the public copy (one in a feed the owner follows) in place of a newsletter's, or leave it out as now if there's none.
 - [ ] **Unfollowing also takes the feed out of the reader's custom timelines, without saying so** (found in #752).
   `timeline_feeds` cascades from the subscription, so a timeline that names the feed loses it; the confirmation before unfollowing (#752) asks only about a name or tags, and a feed in a timeline but with neither unfollows at once.
   Decide whether being in a timeline counts as something lost (one more condition in `losesOnUnfollow`, and a line on the confirmation), and whether following again should put it back.

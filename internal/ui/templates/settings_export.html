@@ -20,6 +20,7 @@
 
       <form class="settings-form" action="/settings/subscriptions.opml" method="get">
         <p class="form-intro">An OPML file of every feed you follow, which you can import into another reader.</p>
+        {{if .Newsletters}}<p class="form-intro">Newsletters aren’t included: they arrive at your Paper Round address, so another reader can’t follow them.</p>{{end}}
         <fieldset class="field tag-checks" aria-describedby="tags-hint">
           <legend>Tags</legend>
           <div class="settings-choices">

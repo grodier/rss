@@ -388,13 +388,17 @@ func listFeedColumns(shared bool) string {
 }
 
 // sharedWhere returns the condition a shared timeline adds on the articles
-// alias a: only articles with a link. "" unless shared.
+// alias a: only articles with a link, and never one of a newsletter feed,
+// which is private to its owner even on their own shared timeline. On an
+// earlier copy's alias, it means a newsletter's copy never collapses a
+// public article away. "" unless shared.
 func sharedWhere(shared bool, a string) string {
 	if !shared {
 		return ""
 	}
 	return `
-				AND ` + a + `.url <> ''`
+				AND ` + a + `.url <> ''
+				AND NOT EXISTS (SELECT 1 FROM feeds o WHERE o.id = ` + a + `.feed_id AND o.owner_id IS NOT NULL)`
 }
 
 // scanArticleWithFeed scans a row of an article's columns (as scanArticle),

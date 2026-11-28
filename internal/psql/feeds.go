@@ -289,7 +289,8 @@ func (r *FeedRepository) RequestRefresh(ctx context.Context, id string) error {
 
 // SiteFeedFacts returns what a site's page shows about each of siteID's
 // feeds beyond the feed itself, by feed ID: its section in Discover's
-// catalog, if it's there, and when it last posted.
+// catalog, if it's there, and when it last posted. Newsletter feeds are
+// left out, as ListBySite does.
 //
 // One statement for the site's feeds (feeds_site_id_idx), each with a probe
 // of articles_feed_sort_idx for its newest article.
@@ -299,7 +300,7 @@ func (r *FeedRepository) SiteFeedFacts(ctx context.Context, siteID string) (map[
 		LEFT JOIN discover_feeds d ON d.feed_id = f.id
 		LEFT JOIN discover_sections sec ON sec.id = d.section_id
 		LEFT JOIN LATERAL (` + newestArticle + `) newest ON true
-		WHERE f.site_id = $1`
+		WHERE f.site_id = $1 AND f.owner_id IS NULL`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, siteID)
 	if err != nil {
@@ -326,11 +327,12 @@ func (r *FeedRepository) SiteFeedFacts(ctx context.Context, siteID string) (map[
 	return facts, rows.Err()
 }
 
-// ListBySite returns a site's feeds ordered by title, then URL.
+// ListBySite returns a site's feeds ordered by title, then URL, never a
+// newsletter feed (an owner_id), which no other reader may see.
 func (r *FeedRepository) ListBySite(ctx context.Context, siteID string) ([]rss.Feed, error) {
 	stmt := `SELECT ` + feedColumns + `
 		FROM feeds
-		WHERE site_id = $1
+		WHERE site_id = $1 AND owner_id IS NULL
 		ORDER BY title, url`
 
 	rows, err := r.DB.QueryContext(ctx, stmt, siteID)

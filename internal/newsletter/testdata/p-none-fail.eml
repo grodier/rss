@@ -1,0 +1,8 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=permerror (dns record not found) header.d=example.org header.s=google header.b=AbCdEf12; dmarc=fail (policy not aligned) header.from=example.org policy.dmarc=none; spf=none smtp.mailfrom=x@example.org; arc=pass smtp.remote-ip=192.0.2.1
+From: someone@example.org
+To: reader.k7x2m9@in.example.com
+Subject: Hello
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Hi.</p></body></html>

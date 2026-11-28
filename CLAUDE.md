@@ -83,6 +83,7 @@ CI (`.github/workflows/ci.yml`) builds the assets, then runs exactly these (plus
 - `internal/lookup`: runs the site lookups queued in the `lookups` table
 - `internal/seed`: parses lists of sites for the seed list (the `seed_sites` table of sites to look up before anyone searches for them)
 - `internal/opml`: reads the feeds listed in OPML files
+- `internal/newsletter`: reads received emails and decides, with no database, whether Cloudflare authenticated their sender, which feed they belong to and what kind of mail they are
 - `internal/importer`: subscribes users to the feeds of their OPML imports, queued in the `import_feeds` table
 - `internal/ingest`: fetches a feed, turns its items into articles and records the outcome and next fetch time (`Refresher`, used by background refresh and the Refresh button)
 - `internal/refresh`: refreshes feeds in the background when they're due

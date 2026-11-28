@@ -1,0 +1,17 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=fail header.d=inbox.example header.s=s1 header.b=AbCdEf12; dmarc=fail header.from=inbox.example policy.dmarc=quarantine; arc=none smtp.remote-ip=192.0.2.1
+From: Reader <Reader@Inbox.example>
+To: reader.k7x2m9@in.example.com
+Subject: Fwd: This week
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Worth reading.
+
+---------- Forwarded message ---------
+From: Example News <News@news.example.org>
+Date: Fri, Nov 27, 2026 at 9:00 AM
+Subject: This week
+To: <reader@inbox.example>
+
+The issue.

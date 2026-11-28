@@ -1,0 +1,10 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=example.com header.s=s1 header.b=AbCdEf12; dmarc=pass header.from=example.com policy.dmarc=reject; spf=none (mx.cloudflare.net: no SPF records found for x@mail.example.com) smtp.helo=mail.example.com; spf=pass (mx.cloudflare.net: domain of bounce@example.com designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@example.com; arc=none smtp.remote-ip=192.0.2.1
+From: news@example.com
+To: reader.k7x2m9@in.example.com
+Subject: This week
+List-Id: <weekly.other.example>
+List-Unsubscribe: <https://example.com/u>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Issue.</p></body></html>

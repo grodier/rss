@@ -378,7 +378,7 @@ The POST goes back to a safe `return_to`, so My feeds' Newsletters view can use 
 Newsletter feeds are already private before anything makes them: a feed with an `owner_id` is a 404 by ID for every other reader and is never fetched, its owner's Refresh says "Newsletters arrive by email, so they can't be refreshed.", and its site is the one internal site, `newsletters` (see "Newsletter feeds are private" under "Data model" in architecture.md for every path); the lists across readers come with #846.
 Mail to the newsletter domain arrives at Cloudflare Email Routing, whose Worker (`infra/email-worker/worker.ts`) signs the raw message and posts it to `POST /inbound/email`, then answers the sender from the status (see "Inbound email" in `infra/README.md`): the handler checks the signature, then works out the reader from `X-Inbound-To` (lowercased, at `-newsletter-domain`, without a `+tag`) with `InboundRepository.ResolveAddress`, which takes a current address or one retired within 30 days of a reader who still has newsletters.
 Past the per-address and per-reader limits, it stores the raw message as an `inbound_emails` row (`InboundRepository.Store`) and answers 202; a replay of an email still waiting is a 202 that stores nothing, and everything else is a status the adapter turns into an SMTP answer (see "Inbound email" under "Security measures" in architecture.md).
-Nothing processes the rows yet: that comes with #829.
+Nothing processes the rows yet: that comes with #829, which will read each with `internal/newsletter`: `Parse` reads the raw message, `Authenticate` takes only the topmost `Authentication-Results` with Cloudflare's authserv-id (`AuthServID`, from real mail), and `Classify` checks that verdict before anything else, so a forged email can't pose as a forward, a confirmation or a newsletter; `Sender` keys the feed and `ToReader` tells mail sent to the address from mail forwarded from the reader's inbox, whose `List-Unsubscribe` isn't the newsletter's.
 Locally, `make inbound/post to=<address> file=<message.eml>` posts a signed `.eml` file (see README).
 
 **Start at:**
@@ -386,10 +386,11 @@ Locally, `make inbound/post to=<address> file=<message.eml>` posts a signed `.em
 1. `internal/server/newsletters.go` (`requireFeature`, `newsletterLocalPart`, the two handlers) and `settings_newsletters.html`.
 2. `internal/psql/newsletters.go` (`NewAddress`).
 3. `infra/email-worker/worker.ts`, `internal/server/inbound.go` (`inboundEmailHandler`) and `internal/psql/inbound.go` (`ResolveAddress`, `Store`).
-4. `internal/validator/newsletter.go`, and its callers in `internal/server/user.go`, `email_change.go`, `waitlist.go` and `internal/admin/invites.go`.
-5. `FeedRepository.GetVisible` and `ArticleRepository.GetVisible` (`internal/psql`), and the server's `visibleFeed` and `visibleArticle` (`helpers.go`), which every route that takes a feed or article ID uses.
+4. `internal/newsletter` (`Authenticate`, `Classify`), with its fixtures in `testdata`.
+5. `internal/validator/newsletter.go`, and its callers in `internal/server/user.go`, `email_change.go`, `waitlist.go` and `internal/admin/invites.go`.
+6. `FeedRepository.GetVisible` and `ArticleRepository.GetVisible` (`internal/psql`), and the server's `visibleFeed` and `visibleArticle` (`helpers.go`), which every route that takes a feed or article ID uses.
 
-**Tests:** `internal/server/newsletters_test.go`, `newsletter_feeds_test.go`, `inbound_test.go` (`TestInboundSignatureFixture` too), `user_test.go`, `email_change_test.go`, `waitlist_test.go`; `internal/psql/newsletters_test.go`, `newsletter_feeds_test.go`, `inbound_test.go`, `user_sessions_test.go`; `internal/validator/newsletter_test.go`; `internal/admin/invites_test.go`, `feeds_test.go` (`TestNewsletterFeedAndSite`); `internal/discovery/normalize_test.go`, `discover_test.go`; `internal/ingest/ingest_test.go`; `cmd/www` and `cmd/admin`'s config tests; `infra/email-worker/worker.test.ts`.
+**Tests:** `internal/server/newsletters_test.go`, `newsletter_feeds_test.go`, `inbound_test.go` (`TestInboundSignatureFixture` too), `user_test.go`, `email_change_test.go`, `waitlist_test.go`; `internal/psql/newsletters_test.go`, `newsletter_feeds_test.go`, `inbound_test.go`, `user_sessions_test.go`; `internal/validator/newsletter_test.go`; `internal/admin/invites_test.go`, `feeds_test.go` (`TestNewsletterFeedAndSite`); `internal/discovery/normalize_test.go`, `discover_test.go`; `internal/ingest/ingest_test.go`; `cmd/www` and `cmd/admin`'s config tests; `infra/email-worker/worker.test.ts`; `internal/newsletter/*_test.go`.
 
 **Why:** "Newsletters" in decisions.md.
 

@@ -1,0 +1,10 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=fail header.d=example.com header.s=s1 header.b=AbCdEf12; dmarc=fail header.from=example.com policy.dmarc=reject; spf=fail smtp.mailfrom=bounce@spoof.example; arc=none smtp.remote-ip=198.51.100.7
+From: Example News <news@example.com>
+To: reader.k7x2m9@in.example.com
+Subject: This week
+List-Id: Example News <weekly.example.com>
+List-Unsubscribe: <https://spoof.example/u>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Forged.</p></body></html>

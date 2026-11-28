@@ -1,0 +1,14 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=google.com header.s=s1 header.b=AbCdEf12; dmarc=pass header.from=google.com policy.dmarc=reject; spf=none (mx.cloudflare.net: no SPF records found for x@mail.google.com) smtp.helo=mail.google.com; spf=pass (mx.cloudflare.net: domain of bounce@google.com designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@google.com; arc=none smtp.remote-ip=192.0.2.1
+From: Gmail Team <forwarding-noreply@google.com>
+To: reader.k7x2m9@in.example.com
+Subject: Gmail Forwarding Confirmation - Receive Mail from reader@inbox.example
+Content-Type: text/plain; charset=UTF-8
+
+reader@inbox.example has requested to automatically forward mail to your email address reader.k7x2m9@in.example.com.
+
+To allow reader@inbox.example to automatically forward mail to your address, please click the link below to confirm the request:
+
+https://mail-settings.google.com/mail/vf-%5BABC123%5D-cmVhZGVy
+
+If you click the link and it appears to be broken, please copy and paste it into a new browser window.

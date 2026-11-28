@@ -1,0 +1,9 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=esp.example.net header.s=s1 header.b=AbCdEf12; dmarc=none header.from=shop.example.org; spf=pass smtp.mailfrom=bounce@esp.example.net; arc=none smtp.remote-ip=192.0.2.1
+From: Shop <news@shop.example.org>
+To: reader.k7x2m9@in.example.com
+Subject: Sale
+List-Unsubscribe: <https://esp.example.net/u/1>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Sale.</p></body></html>

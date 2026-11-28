@@ -1,0 +1,9 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=fail header.d=example.com header.s=s1 header.b=AbCdEf12; dmarc=fail header.from=example.com policy.dmarc=reject; arc=none smtp.remote-ip=192.0.2.1
+From: Example News <news@example.com>
+To: reader.k7x2m9@in.example.com
+Subject: Please confirm your subscription
+List-Unsubscribe: <https://example.com/u>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p><a href="https://example.com/about">About us</a></p><p><a href="https://example.com/s/abc123?t=9">Yes, confirm my subscription</a></p><p><a href="https://example.com/confirm?t=other">later</a></p></body></html>

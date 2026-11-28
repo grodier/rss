@@ -57,3 +57,44 @@ const InboundMaxBytes = 5 << 20
 // InboundPendingMaxBytes caps the emails waiting to be processed for one
 // reader, across their current and retired addresses.
 const InboundPendingMaxBytes = 50 << 20
+
+// Email is a received email as the newsletter runner reads it
+// (newsletter.Parse): the headers it uses and the body, every value cut to
+// a size and valid UTF-8. Addresses are lowercased.
+type Email struct {
+	FromName  string
+	From      string // From's address
+	To        []string
+	Cc        []string
+	ReplyTo   string
+	Subject   string
+	MessageID string
+	Date      time.Time // zero when missing or unreadable
+
+	ListID              string // List-Id's identifier, inside its angle brackets
+	ListUnsubscribe     string
+	ListUnsubscribePost string
+
+	// AuthenticationResults are the Authentication-Results headers, topmost
+	// first. Senders can add their own: newsletter.Authenticate decides
+	// which one counts.
+	AuthenticationResults []string
+	// ARC is the email's ARC sets, by instance (lowest first).
+	ARC []ARCSet
+
+	// HTML is the body: the HTML part, or the text part wrapped in
+	// paragraphs, without attachments.
+	HTML string
+	// ForwardedFrom is the sender's address in a forwarded block in the
+	// body ("---------- Forwarded message ---------" and the like), when
+	// there is one.
+	ForwardedFrom string
+}
+
+// ARCSet is one instance of an email's ARC headers: who sealed it and the
+// authentication results it recorded.
+type ARCSet struct {
+	Instance int    // i=
+	Sealer   string // ARC-Seal's d=, lowercased
+	Results  string // ARC-Authentication-Results, after its "i=N;"
+}

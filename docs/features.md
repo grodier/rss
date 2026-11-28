@@ -356,7 +356,7 @@ Subscribing bumps nothing onto the timeline: the backlog keeps its published dat
 
 **Start at:**
 
-1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its kinds, sort and search, with `discovery.KindOf` in `internal/discovery/names.go`), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
+1. `internal/server/feeds.go`: subscribe, unsubscribe and its confirmation (`feedUnsubscribeHandler`, `feedUnfollowHandler`), `feedsHandler` (its kinds, sort and search, with `discovery.KindOf` in `internal/discovery/names.go`), and the subscription edit handlers; the `follow-form` partial in `partials/discover_feed.html`, its data a `followButton` in `rows.go`; `web/app/features/save-star.ts` and `feeds-filter.ts`.
 2. `internal/psql/subscriptions.go`.
 3. Export: `exportOPMLHandler` in `internal/server/settings.go`.
 4. Import: `internal/server/import.go`, `internal/opml/opml.go`, `internal/psql/imports.go`, then `internal/importer/importer.go`.
@@ -574,11 +574,11 @@ Without JavaScript the link just works.
 
 1. `internal/server/home.go` (`renderTimeline`, `fillDivider`, `timelineSeenHandler`) and `cursor.go`.
 2. `internal/psql/articles.go` (`ListTimeline`, `entriesStmt`, `timelineStmt`, `fillAlsoIn`, `ListByFeed`, `timelineAt`).
-3. `internal/server/articles.go` (`articleHandler`, `articleRow`, `fillMark`), `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`) and `marks.go` (`markedArticleIDs`, the copy rule reads share with saves and stars), with `rss.TimelineMark`.
+3. `internal/server/articles.go` (`articleHandler`) and `rows.go` (`articleRow`, `fillMark`), `internal/psql/reads.go` (including `MarkSeen`, `TimelineLine`) and `marks.go` (`markedArticleIDs`, the copy rule reads share with saves and stars), with `rss.TimelineMark`.
 4. `internal/sanitize/sanitize.go` (`HTML`, `ShowsImage`), `code.go` (`labelCode`) and `social.go` (`xPost`, `blueskyPost`, `socialCard`).
 5. `partials/article_row.html`, and `seen-beacon.ts`, `infinite-scroll.ts`, `home-fetching.ts`, `read-pings.ts`, `image-fallback.ts` and `code-copy.ts` in `web/app/features`.
 
-**Tests:** `internal/server/home_test.go`, `articles_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `read-pings.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`, `contents.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `marks_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
+**Tests:** `internal/server/home_test.go`, `articles_test.go`, `rows_test.go`, `cursor_test.go`, `scroll_test.go`; `web/app/features/seen-beacon.test.ts`, `read-pings.test.ts`, `infinite-scroll.test.ts`, `home-fetching.test.ts`, `image-fallback.test.ts`, `code-copy.test.ts`, `contents.test.ts`; `internal/psql/articles_test.go`, `reads_test.go`, `marks_test.go`, `subscriptions_test.go`; `internal/sanitize`; `internal/rss/rss_test.go`.
 
 **Why:** "Reading" and "Design" in decisions.md.
 

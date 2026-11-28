@@ -106,7 +106,9 @@
     white-space: nowrap;
   }
 
-  .settings-row .icon {
+  /* A row's own chevron, not an icon inside a control in the row (the
+     newsletter address's Copy), which its control centers. */
+  .settings-row > .icon {
     inline-size: 1.125rem;
     block-size: 1.125rem;
     margin-inline-start: auto;
@@ -343,8 +345,6 @@
   .timeline-start .avatar .icon {
     inline-size: 1.25rem;
     block-size: 1.25rem;
-    margin: 0;
-    color: inherit;
   }
 
   /* Settings > Newsletters (#827). */

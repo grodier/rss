@@ -114,12 +114,12 @@ describe("the answer to the sender", () => {
 
   it("rejects an unknown address on 404", async () => {
     const { rejected } = await send({ status: 404 });
-    expect(rejected).toBe("550 5.1.1 No such recipient");
+    expect(rejected).toBe("No such recipient");
   });
 
   it("rejects a message the app finds too big on 413", async () => {
     const { rejected } = await send({ status: 413 });
-    expect(rejected).toBe("552 5.3.4 Message too big");
+    expect(rejected).toBe("Message too big");
   });
 
   it.each([401, 429, 500, 502, 503, 302])("throws on %i, a temporary failure", async (status) => {
@@ -153,7 +153,7 @@ describe("refused before posting", () => {
     ["non-ASCII", "sàm@in.localhost"],
   ])("a recipient at %s", async (_, to) => {
     const { rejected } = await send({ to });
-    expect(rejected).toBe("550 5.1.1 No such recipient");
+    expect(rejected).toBe("No such recipient");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -169,7 +169,7 @@ describe("refused before posting", () => {
     ["a trailing dot", "hello@paperround.app."],
   ])("a sender at %s", async (_, from) => {
     const { rejected } = await send({ from });
-    expect(rejected).toBe("550 5.7.1 Message refused");
+    expect(rejected).toBe("Message refused");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -183,7 +183,7 @@ describe("refused before posting", () => {
 
   it("a message over 5 MiB", async () => {
     const { rejected } = await send({ rawSize: 5 * 1024 * 1024 + 1 });
-    expect(rejected).toBe("552 5.3.4 Message too big");
+    expect(rejected).toBe("Message too big");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

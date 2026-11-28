@@ -383,15 +383,22 @@ If connections to port 465 time out anyway, Resend also listens on 2465 (`RSS_SM
 It's set in Render's dashboard and ignored by Terraform, so it never lands in the state, and `www` refuses to start without it while `RSS_NEWSLETTER_DOMAIN` is set.
 
 Mail reaches it through Cloudflare Email Routing on `in.paperround.app` (`email.tf`): the zone's catch-all rule runs the `rss-inbound-email` Worker (`email-worker/worker.ts`, built by `tsc` into `email-worker/dist/worker.js`, which Terraform uploads), which signs each message with its own `INBOUND_SECRET`, the same value, and posts it to `https://paperround.app/inbound/email`.
-It answers the sender from the app's status, during delivery, so we never send bounces: 202 accepts, 404 rejects with "550 5.1.1 No such recipient", and 401, 429 and 5xx throw, which Cloudflare answers with a temporary failure, so the sender retries.
-Without posting, it rejects mail to addresses outside `in.paperround.app` (550), mail whose envelope sender is at `paperround.app` or a subdomain (550 5.7.1), and messages over 5 MiB (552).
+It answers the sender from the app's status, during delivery, so we never send bounces: 202 accepts, 404 rejects ("No such recipient"), and 401, 429 and 5xx throw, which Cloudflare answers with a temporary failure, so the sender retries.
+Without posting, it rejects mail to addresses outside `in.paperround.app` ("No such recipient"), mail whose envelope sender is at `paperround.app` or a subdomain ("Message refused"), and messages over 5 MiB ("Message too big").
+Cloudflare refuses with its own code and the Worker's text, so a sender sees `555 5.7.1 No such recipient`.
 Its logs (the Worker's **Observability** tab in Cloudflare's dashboard) show each answer's status, never an address.
 Terraform reads the build, so CI and `infra.yml` run `npm ci` and `npm run build` in `email-worker/` before Terraform; locally, run `make email-worker` before `terraform plan` (see "Running Terraform locally").
 
 ### Setting up inbound email
 
 1. **Cloudflare API token:** on the account-owned `rss-terraform` token, add **Workers Scripts: Edit** for the account, and, for the zone `paperround.app`, **Email Routing Rules: Edit** and **Zone Settings: Edit** (Email Routing's settings and DNS).
-2. **Apply** the PR. Then, in Cloudflare's dashboard, **Email → Email Routing** for `paperround.app` should list `in.paperround.app` with its records locked, and the catch-all rule sending to `rss-inbound-email`.
+2. **Apply** the PR. Then, in Cloudflare's dashboard, **Email → Email Routing** for `paperround.app` should list `in.paperround.app` under **Settings → Subdomains** as Enabled with its records locked, and the catch-all rule sending to `rss-inbound-email` under **Routing rules**.
+   The Worker can take a refresh to appear under **Workers & Pages**.
+
+### What Email Routing shows that isn't a mistake
+
+- **"Email DNS records misconfigured"** on the zone's Email Routing page, with three MX records for the apex (`paperround.app`) listed as missing. The apex has no MX records on purpose: nothing receives mail there, and the warning doesn't affect `in.paperround.app`, whose own status is Enabled. Don't click **Add missing records** or **Fix DNS records**: mail to any address at `paperround.app` would then reach the Worker, which refuses it, and the records would be outside Terraform.
+- **The apex's `cf2024-1._domainkey` DKIM key (locked) and SPF record (`v=spf1 include:_spf.mx.cloudflare.net ~all`)**, which Email Routing manages, not Terraform. Neither affects sending: Resend's return path is `send.paperround.app`, with its own SPF.
 3. **The Worker's secret:** set it as in "Setting or rotating it". Until it's set, the Worker throws, so mail is deferred, not lost.
 4. **Test sends:** see "Test sends".
 
@@ -408,10 +415,11 @@ Terraform reads the build, so CI and `infra.yml` run `npm ci` and `npm run build
 Send while the newsletter runner (#829) doesn't exist yet, so the raw messages stay in `inbound_emails.raw` to read; never commit them, they hold real addresses.
 
 1. From a personal account, send an email to a test reader's address (a reader with newsletters, from Settings › Newsletters): an `inbound_emails` row appears, and the Worker's logs show `inbound: 202`.
-2. Send one to an unknown address at `in.paperround.app`: it bounces with 550 5.1.1, and the Worker's logs show `inbound: 404`.
+2. Send one to an unknown address at `in.paperround.app`: the sender's own server bounces it with `555 5.7.1 No such recipient`, Email Routing's **Activity log** shows it rejected, and the Worker's logs show `inbound: 404`.
    `rss`'s request log shows `POST /inbound/email` with no address.
+   Steps 1 and 2 need no database access; reading what the stored messages carry (step 5), and Gmail's forwarding code (step 3), do, and production's database is reachable only from Render's private network.
 3. Set up auto-forwarding from a Gmail account to the test reader's address (the forwarding code arrives as its own email) and forward one newsletter.
-4. The deferral check: point the Worker at a URL that answers 503 (edit `INBOUND_URL` in the dashboard; the next apply puts it back), or send during a deploy, and send one: the sender should report a delay, not a bounce, and deliver it once the Worker is back.
+4. The deferral check: point the Worker at a host that can't resolve, such as `https://deferral-test.invalid/inbound/email` (edit `INBOUND_URL` in the dashboard and deploy; `.invalid` never resolves, so the message goes nowhere), send one, then set `INBOUND_URL` back to `https://paperround.app/inbound/email`: the sender should report a delay at most, not a bounce, and deliver it on a retry.
    If Cloudflare bounces it instead, stop: the fallback is the Worker writing messages to an R2 bucket the app reads.
 5. Record what the messages carry in `docs/decisions.md` under "Newsletters": `Authentication-Results`' authserv-id, which of `dmarc=`, `dkim=`, `spf=` and `arc=` it reports and where it sits among the headers, and what the Gmail forward's `ARC-Authentication-Results` carry; and whether a throwing Worker defers mail.
 

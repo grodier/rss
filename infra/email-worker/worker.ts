@@ -23,9 +23,12 @@ interface Env {
 // The most the endpoint stores: rss.InboundMaxBytes.
 const MAX_BYTES = 5 * 1024 * 1024;
 
-const NO_SUCH_RECIPIENT = "550 5.1.1 No such recipient";
-const TOO_BIG = "552 5.3.4 Message too big";
-const REFUSED = "550 5.7.1 Message refused";
+// The texts of setReject's refusals. Cloudflare answers the sender with its
+// own code, "555 5.7.1", followed by the text ("Newsletters" in
+// docs/decisions.md), so they carry no codes of their own.
+const NO_SUCH_RECIPIENT = "No such recipient";
+const TOO_BIG = "Message too big";
+const REFUSED = "Message refused";
 
 export default {
   async email(message, env) {

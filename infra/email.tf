@@ -41,7 +41,8 @@ resource "cloudflare_workers_script" "inbound_email" {
 
 # The zone's catch-all, so it also gets mail for paperround.app's other
 # addresses, if they ever had MX records: the Worker refuses every address
-# outside the newsletter domain.
+# outside the newsletter domain. Terraform can't delete it: removed from here,
+# it stays in Cloudflare until it's deleted in the dashboard.
 resource "cloudflare_email_routing_catch_all" "newsletters" {
   zone_id  = var.cloudflare_app_zone_id
   name     = "rss: newsletters to the inbound email Worker"

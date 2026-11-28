@@ -1,0 +1,9 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=paperround.app header.s=s1 header.b=AbCdEf12; dmarc=pass header.from=paperround.app policy.dmarc=reject; spf=none (mx.cloudflare.net: no SPF records found for x@mail.paperround.app) smtp.helo=mail.paperround.app; spf=pass (mx.cloudflare.net: domain of bounce@paperround.app designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@paperround.app; arc=none smtp.remote-ip=192.0.2.1
+From: Paper Round <hello@paperround.app>
+To: reader.k7x2m9@in.example.com
+Subject: Welcome
+List-Unsubscribe: <https://paperround.app/u>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Hi.</p></body></html>

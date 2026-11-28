@@ -1,0 +1,21 @@
+Received: from mail-ej1.google.com by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+ARC-Seal: i=3; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; cv=pass; b=AAAA
+ARC-Message-Signature: i=3; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; b=AAAA
+ARC-Authentication-Results: i=3; mx.cloudflare.net; dkim=fail header.d=example.com; dmarc=fail header.from=example.com policy.dmarc=reject; arc=pass smtp.remote-ip=192.0.2.9
+Authentication-Results: mx.cloudflare.net; dkim=fail (body hash did not verify) header.d=example.com header.s=s1 header.b=AbCdEf12; dmarc=fail header.from=example.com policy.dmarc=reject; spf=none smtp.mailfrom=reader+caf_=reader.k7x2m9=in.example.com@inbox.example; arc=pass smtp.remote-ip=192.0.2.9
+ARC-Seal: i=2; a=rsa-sha256; s=arc-20260327; d=sealer.example; cv=pass; b=BBBB
+ARC-Message-Signature: i=2; a=rsa-sha256; s=arc-20260327; d=sealer.example; b=BBBB
+ARC-Authentication-Results: i=2; mx.google.com; dkim=pass header.i=@example.com header.s=s1 header.b=AbCdEf12; arc=pass (i=1); spf=pass (google.com: domain of bounce@example.com designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@example.com; dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.com
+X-Forwarded-To: reader.k7x2m9@in.example.com
+X-Forwarded-For: reader@inbox.example reader.k7x2m9@in.example.com
+Authentication-Results: mx.google.com; dkim=pass header.i=@example.com; dmarc=pass header.from=example.com
+ARC-Seal: i=1; a=rsa-sha256; s=arc-20260327; d=google.com; cv=none; b=CCCC
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+From: Example News <news@example.com>
+To: reader@inbox.example
+Subject: This week
+List-Id: Example News <weekly.example.com>
+List-Unsubscribe: <https://example.com/u/reader-inbox>
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Issue, its footer rewritten on the way.</p></body></html>

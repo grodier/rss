@@ -739,6 +739,7 @@ Where newsletters live was revised before building, with #862 (see "Newsletters 
   DMARC must pass, or, when the sender's domain has no DMARC policy (as with many newsletters sent through an email service), DKIM from any domain.
   Mail that fails is held under Other mail with the reason (#833), never put in the timeline; authentication is checked before any other sorting, so a forged email can't pose as a forward, a confirmation or a newsletter (#845), and mail claiming to be from `paperround.app` is dropped.
   When DKIM comes from a domain other than From's, the sender is keyed as "<from> via <domain>", so someone else signing as that From gets a feed of their own, never the newsletter's.
+  A forward Cloudflare can't pass itself passes when Cloudflare reports `arc=pass` and the last seal before Cloudflare's own, by Gmail or Outlook, recorded the original sender passing (#845); Cloudflare's seal has the highest `i=`, so that's the highest set it didn't seal.
 - **The app never mails a reader's newsletter address** (#827): signup, email changes, the waitlist and invites refuse addresses at the newsletter domain, since the Worker would refuse the app's own mail and the bounce would count against our sending domain.
   The one exception is the admin's test email twice a day (#844), to a reserved address the Worker lets through.
 - **Received emails are stored first and processed by a runner** (#828, #829), so a parsing bug never bounces mail; raw messages are deleted once processed.

@@ -1,0 +1,26 @@
+Received: from mail.example.net (mail.example.net [192.0.2.1]) by mx.cloudflare.net with ESMTPS; Fri, 27 Nov 2026 12:00:00 +0000
+Authentication-Results: mx.cloudflare.net; dkim=pass header.d=news.example.com header.s=s1 header.b=AbCdEf12; dmarc=pass header.from=news.example.com policy.dmarc=reject; spf=none (mx.cloudflare.net: no SPF records found for x@mail.news.example.com) smtp.helo=mail.news.example.com; spf=pass (mx.cloudflare.net: domain of bounce@news.example.com designates 192.0.2.1 as permitted sender) smtp.mailfrom=bounce@news.example.com; arc=none smtp.remote-ip=192.0.2.1
+From: =?UTF-8?Q?Caf=C3=A9_News?= <News@News.Example.com>
+To: reader.k7x2m9@in.example.com, "Other" <Other@Example.org>
+Cc: cc@example.org
+Reply-To: Editor <editor@news.example.com>
+Subject: =?UTF-8?B?Q2Fmw6kgd2Vla2x5?=
+Message-ID: <abc123@news.example.com>
+Date: Fri, 27 Nov 2026 11:59:00 +0000
+List-Id: Café News <weekly.news.example.com>
+List-Unsubscribe: <https://news.example.com/u/abc>, <mailto:u@news.example.com>
+List-Unsubscribe-Post: List-Unsubscribe=One-Click
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hello reader, this week=E2=80=99s issue.
+--b1
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: base64
+
+PHA+SGVsbG8gPGI+cmVhZGVyPC9iPiwgdGhpcyB3ZWVr4oCZcyBpc3N1ZS48L3A+
+--b1--

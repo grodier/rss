@@ -87,6 +87,7 @@ It refuses to start in production without `-secret-key`, the key admins' TOTP se
 | `internal/seed` | Parses the lists of sites the admin pastes into the seed list, one address per line with an optional section hint, saying what each line will do | `discovery`, `rss` |
 | `internal/importer` | OPML import queue workers | `discovery`, `lookup`, `rss` |
 | `internal/opml` | Read the feeds listed in an OPML file, with their folders | — |
+| `internal/newsletter` | Reads a received email (`Parse`) and decides, with no database: Cloudflare's verdict on its sender (`Authenticate`), the key of the feed it belongs to (`Sender`), what kind of mail it is (`Classify`), and whether it was sent to the reader's newsletter address or forwarded from their inbox (`ToReader`) | `rss`, `textcut` |
 | `internal/refresh` | Feed refresh workers | `ingest`, `rss` |
 | `internal/siteicon` | Site icon workers | `discovery`, `feedparse`, `fetch`, `rss` |
 | `internal/enrich` | Article enrichment workers | `discovery`, `fetch`, `ingest`, `rss` |
